@@ -7,6 +7,11 @@ from. The decisions about it are in Umpire's docs, not here: read
 `docs/roadmap.md` first. StageHand is `~/dev/dev-audio/StageHand` on the
 Linux PC and `~/Dev-MIDI/StageHand` on the Mac.
 
+**On the Mac:** uw-core hasn't been built on macOS yet. Follow
+[docs/macos-check.md](docs/macos-check.md) first, and record the results
+there. On the Mac, Umpire's docs are wherever its clone is, likely under
+`~/Dev-MIDI`; ask the author if it isn't there.
+
 ## Working with the author
 
 - The author commits to `main` directly. Never open pull requests. Ask before

@@ -66,7 +66,9 @@ if(NOT UW_CORE_UMP_ONLY)
     target_link_libraries(uw-clap-host
         PUBLIC  uw-plugin uw-clap-sdk Threads::Threads ${CMAKE_DL_LIBS}
         PRIVATE uw-warnings)
-
+    if(APPLE)
+        target_link_libraries(uw-clap-host PUBLIC "-framework CoreFoundation")   # CFBundle loads .clap bundles
+    endif()
 endif()
 
 if(NOT UW_CORE_UMP_ONLY AND UW_CORE_BACKENDS)

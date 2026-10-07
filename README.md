@@ -62,7 +62,8 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
   and closes an ALSA sequencer client.
 
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) were copied with the
-rest but haven't been built in uw-core yet. The first Mac build checks them.
+rest but haven't been built in uw-core yet. The first Mac build follows
+[docs/macos-check.md](docs/macos-check.md).
 
 ## Where the code came from
 
