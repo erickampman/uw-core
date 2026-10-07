@@ -1,10 +1,11 @@
 # uw-core
 
-Code shared by StageHand, Umpire and (`uw::ump` only) the plugins. Empty so
-far. The decisions about it are in Umpire's docs, not here: read
+Code shared by StageHand, Umpire and (`uw::ump` only) the plugins. Start
+with README.md: the layers, how to build and test, and where the code came
+from. The decisions about it are in Umpire's docs, not here: read
 `~/dev/dev-midi/UmpireDAW/docs/decisions.md` ("Shared code", "DPF fork") and
-`docs/naming.md` first. On the Mac the paths differ (StageHand is
-`~/Dev-MIDI/StageHand` there).
+`docs/roadmap.md` first. StageHand is `~/dev/dev-audio/StageHand` on the
+Linux PC and `~/Dev-MIDI/StageHand` on the Mac.
 
 ## Working with the author
 
