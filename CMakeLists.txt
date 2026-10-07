@@ -13,6 +13,7 @@ project(uw-core VERSION 0.1.0 LANGUAGES CXX)
 #   uw::midi       ALSA sequencer UMP (Linux) / CoreMIDI (macOS) input
 
 option(UW_CORE_UMP_ONLY "Build only uw::ump (for plugins: no CLAP, JACK or ALSA needed)" OFF)
+option(UW_CORE_BACKENDS "Build uw::audio and uw::midi (Linux: needs JACK and ALSA)" ON)
 option(UW_CORE_TESTS "Build uw-core's tests" ${PROJECT_IS_TOP_LEVEL})
 
 if(PROJECT_IS_TOP_LEVEL)
@@ -66,6 +67,9 @@ if(NOT UW_CORE_UMP_ONLY)
         PUBLIC  uw-plugin uw-clap-sdk Threads::Threads ${CMAKE_DL_LIBS}
         PRIVATE uw-warnings)
 
+endif()
+
+if(NOT UW_CORE_UMP_ONLY AND UW_CORE_BACKENDS)
     # --- uw::audio and uw::midi: the platform backends ----------------------------
     add_library(uw-audio STATIC)
     add_library(uw::audio ALIAS uw-audio)
@@ -105,7 +109,7 @@ if(UW_CORE_TESTS)
         uw_add_test(test-clock     tests/ClockTests.cpp     uw-base)
         uw_add_test(test-denormals tests/DenormalTests.cpp  uw-base)
         uw_add_test(test-clap-host tests/ClapHostTests.cpp uw-clap-host)
-        if(NOT APPLE)
+        if(UW_CORE_BACKENDS AND NOT APPLE)
             uw_add_test(test-backends tests/BackendTests.cpp "uw-audio;uw-midi")
         endif()
         target_link_libraries(test-spsc PRIVATE Threads::Threads)

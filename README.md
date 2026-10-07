@@ -42,6 +42,9 @@ add_subdirectory(external/uw-core)
 target_link_libraries(my-plugin PRIVATE uw::ump)
 ```
 
+Without the backends (no JACK or ALSA needed: libraries and tests only),
+set `UW_CORE_BACKENDS` to `OFF`.
+
 ## Building and testing
 
 ```bash
