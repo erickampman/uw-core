@@ -78,9 +78,10 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
 - `test-backends` checks for a JACK server without starting one, and opens
   and closes an ALSA sequencer client.
 
-The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) were copied with the
-rest but haven't been built in uw-core yet. The first Mac build follows
-[docs/macos-check.md](docs/macos-check.md).
+The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
+warnings in StageHand's CI (macOS 15, Apple Silicon). Nothing has run them on
+a Mac yet; [docs/macos-check.md](docs/macos-check.md) is the checklist for
+that.
 
 ## Where the code came from
 

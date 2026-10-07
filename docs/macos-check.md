@@ -1,8 +1,8 @@
 # Checking uw-core on the Mac
 
 uw-core was made on the Linux PC (2026-10-07). Its macOS code was copied
-from StageHand, where it built and ran, but **uw-core has never been built on
-macOS**:
+from StageHand, where it built and ran. StageHand's CI has since built it on
+macOS (see Results), but **nothing has run it on a Mac yet**:
 - the CoreAudio and CoreMIDI backends;
 - CLAP bundle loading;
 - the Apple branch of `CMakeLists.txt`;
@@ -126,4 +126,22 @@ branch in its `CMakeLists.txt` (the `stagehand-lib` interface target) and at
 
 ## Results
 
-(none yet)
+**2026-10-07, StageHand's CI** (GitHub Actions, `macos-15`, Apple Silicon;
+run 37698375543 on StageHand's `uw-core-switch`, at uw-core `a200ba4`):
+- StageHand configured and built over uw-core with **no warnings**. That
+  included uw-core's `CoreAudioBackend`, `CoreMidiInput` and the CLAP host,
+  the first time any of them was built from uw-core on macOS. The `stagehand`
+  app linked.
+- StageHand's 11 suites passed.
+- The Linux job (Ubuntu 24.04) also passed its 11 suites. It warned
+  `-Wrange-loop-construct` in StageHand's UI code, from before the switch,
+  fixed on the branch afterwards.
+- The first run failed at checkout: the workflow's `token:` (the
+  `SUBMODULES_TOKEN` secret) is used for StageHand's own checkout too, so the
+  token needs read access to StageHand as well as uw-core. Fixed by adding
+  StageHand to the token's repositories.
+
+This settles most of step 1 and the build half of step 3. **Still to do on a
+Mac:** uw-core's own tests (step 1, including `test-clap-host` with a real
+bundle), step 2, and step 3's app checks (`--list-midi`, `--list-audio`,
+`--list-plugins`, the virtual inputs' names, and the audible ones).
