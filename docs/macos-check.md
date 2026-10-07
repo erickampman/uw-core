@@ -22,6 +22,12 @@ Claude. Record what happens at the end of this file, and in Umpire's
   in `~/Dev-Audio`. uw-core has no Mac home yet. `~/Dev-Common/uw-core`
   matches the Linux PC's `~/dev/dev-common`. Put it there unless the author
   says otherwise, and note the path in this file.
+- In each Mac clone with submodules (StageHand now; Umpire and the
+  plugins as they get them), run once:
+  `git config push.recurseSubmodules check`. Or push with
+  `git push --recurse-submodules=check`. Either way, git refuses to push a
+  pin whose uw-core commit isn't on GitHub yet (README.md, "Pushing:
+  uw-core first").
 - Everything below is silent except where marked **audible**. The author
   runs the audible steps; warn before any of them.
 
@@ -110,7 +116,9 @@ branch in its `CMakeLists.txt` (the `stagehand-lib` interface target) and at
 
 - Fix what broke in uw-core first. Commit and push it, then move
   StageHand's pin (`external/uw-core`) to that commit and commit on
-  `uw-core-switch`. Push uw-core before StageHand.
+  `uw-core-switch`. Push uw-core before StageHand: with
+  `push.recurseSubmodules check` set (or `git push
+  --recurse-submodules=check`), git refuses StageHand's push otherwise.
 - Record the result below, and in Umpire's `docs/roadmap.md` ("Outside
   Umpire's roadmap": the StageHand line). Remove the "never been built on
   macOS" note in README.md once it's built.

@@ -14,6 +14,13 @@ there. On the Mac, Umpire's docs are wherever its clone is, likely under
 
 ## Working with the author
 
+- Push uw-core before any pin that points at its commit. In every clone
+  with submodules, on the Linux PC and the Mac, use
+  `git push --recurse-submodules=check`, or set
+  `git config push.recurseSubmodules check` once per clone, so git refuses
+  a pin uw-core's remote doesn't have yet (README.md, "Pushing: uw-core
+  first").
+
 - The author commits to `main` directly. Never open pull requests. Ask before
   pushing.
 - One milestone per session, about a day of work each.

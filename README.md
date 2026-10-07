@@ -45,6 +45,23 @@ target_link_libraries(my-plugin PRIVATE uw::ump)
 Without the backends (no JACK or ALSA needed: libraries and tests only),
 set `UW_CORE_BACKENDS` to `OFF`.
 
+### Pushing: uw-core first
+
+A change in uw-core that a user needs goes in two steps:
+1. Commit and push uw-core.
+2. Move the user's pin (`external/uw-core`), then commit and push the user.
+
+Push the submodule's commit before the pin that points at it. Otherwise the
+other machine can't fetch the pin. To have git refuse such a push:
+
+```bash
+git push --recurse-submodules=check             # this push only
+git config push.recurseSubmodules check         # the default for this clone
+```
+
+The `git config` line is per clone: run it in every clone that has
+submodules (StageHand, Umpire, each plugin), on the Linux PC and on the Mac.
+
 ## Building and testing
 
 ```bash
