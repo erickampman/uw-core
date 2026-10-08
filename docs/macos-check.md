@@ -145,3 +145,23 @@ This settles most of step 1 and the build half of step 3. **Still to do on a
 Mac:** uw-core's own tests (step 1, including `test-clap-host` with a real
 bundle), step 2, and step 3's app checks (`--list-midi`, `--list-audio`,
 `--list-plugins`, the virtual inputs' names, and the audible ones).
+
+**2026-10-08, on the Mac** (macOS 26.6.2, Apple Silicon, Homebrew cmake and
+ninja; uw-core at `ba8d0d9`, cloned at `~/Dev-Common/uw-core`):
+- Step 1: a fresh build had **no warnings**, and the 5 suites passed.
+  `test-clap-host` found 10 bundles in `~/Library/Audio/Plug-Ins/CLAP` and
+  ran "GTK CLAP Min POC". No `CMAKE_OSX_DEPLOYMENT_TARGET` was needed.
+- Step 2 (`UW_CORE_UMP_ONLY`, C++17): `test-ump` passed, and only
+  `libuw-ump.a` was built.
+- The scan loads every bundle into one process, and the installed DPF plugins
+  (DelChoFlan, StruckSynth, StruckKit, PlainOldSynth, IFSynth, TwoPeaks,
+  OnlyTalk, PMDGLCanvas, PolygraphModular) all define pugl's Objective-C
+  classes as `DGL_17000604_Pugl*`. The ObjC runtime warns that each class is
+  implemented in more than one place. That's the clash Umpire's
+  decisions.md covers ("Every consumer sets its own `DGL_NAMESPACE`"). Those
+  plugins haven't set theirs yet. uw-core needs no change for it.
+- A review against StageHand `0c7edc5`, with the README's renames applied,
+  found only the changes that README.md lists, plus comments that now say
+  "StageHand's docs/...".
+
+**Still to do on a Mac:** step 3, StageHand over uw-core.
