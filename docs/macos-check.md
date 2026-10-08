@@ -182,6 +182,9 @@ ninja; uw-core at `ba8d0d9`, cloned at `~/Dev-Common/uw-core`):
   "StageHand" and "StageHand MIDI 2.0", but those are the names of the
   input ports. That bullet is corrected above.
 
-**Still to do:** step 3's **audible** checks, by the author: `--tone`, a
-rack with an instrument, a MIDI keyboard and an editor open, and the click
-on a second device (the aggregate device).
+- The author's **audible** checks passed: `--tone`, and a rack with an
+  instrument, a MIDI keyboard, the rack window and a plugin editor open.
+
+**Not yet tested:** the click on a second device, which uses the private
+aggregate device named by `setAggregateIdentity()`. This Mac has no second
+output device to try it on.
