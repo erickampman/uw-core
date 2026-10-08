@@ -96,10 +96,12 @@ Then the app, silent first:
 - `build-uw/stagehand --list-audio`: output devices through uw-core's
   CoreAudio.
 - `build-uw/stagehand --list-plugins`: CLAP bundles through uw-core's host.
-- In another app (e.g. Audio MIDI Setup's MIDI Studio, or a DAW's MIDI
-  inputs), with StageHand playing: its virtual inputs should still be named
-  "StageHand" and "StageHand MIDI 2.0". uw-core now gets that name from
-  StageHand's `kAppName`.
+- `build-uw/stagehand --monitor` (silent; no audio): it should print the
+  virtual inputs "MIDI 2.0 In" and "MIDI 1.0 In" (StageHand's
+  `docs/command-line.md`), and other apps should see them as MIDI
+  destinations. Its CoreMIDI client is "StageHand", and so are its own
+  input ports ("StageHand" and "StageHand MIDI 2.0"), which other apps
+  don't see. uw-core now gets that name from StageHand's `kAppName`.
 
 Then the **audible** checks, by the author:
 - `build-uw/stagehand --tone`: the test sine.
@@ -165,3 +167,21 @@ ninja; uw-core at `ba8d0d9`, cloned at `~/Dev-Common/uw-core`):
   "StageHand's docs/...".
 
 **Still to do on a Mac:** step 3, StageHand over uw-core.
+
+**2026-10-08, step 3 on the Mac** (StageHand's `uw-core-switch` at
+`584cbff`, pinned to uw-core `a200ba4`, at `~/Dev-MIDI/StageHand`):
+- A fresh `build-uw` configured and built with **no warnings**, and the 11
+  suites passed. Checking out the branch left the old `external/clap/`
+  behind as an untracked folder. The build doesn't use it.
+- `--list-midi` listed the one source (a network MIDI 2.0 session).
+  `--list-audio` listed 3 output devices, with the default marked.
+  `--list-plugins` listed all 10 bundles.
+- `--monitor` made the virtual inputs "MIDI 2.0 In" (MIDI 2.0) and
+  "MIDI 1.0 In" (MIDI 1.0), and CoreMIDI listed them as destinations. They
+  had the same names before the switch. Step 3 used to expect them as
+  "StageHand" and "StageHand MIDI 2.0", but those are the names of the
+  input ports. That bullet is corrected above.
+
+**Still to do:** step 3's **audible** checks, by the author: `--tone`, a
+rack with an instrument, a MIDI keyboard and an editor open, and the click
+on a second device (the aggregate device).
