@@ -2,6 +2,8 @@
 // Silent: only virtual endpoints of our own, which exist while the test runs
 // (other apps may list them for that moment), and no device is opened.
 
+#include <CoreMIDI/CoreMIDI.h>
+
 #include <chrono>
 #include <cstdio>
 #include <mutex>
@@ -114,6 +116,37 @@ void testDestination(CoreMidiOutput& out, CoreMidiInput& in, Collector& sink, Mi
     in.close(input);
 }
 
+// The unique ID CoreMIDI has for our source named `name`, or 0.
+std::int32_t uniqueIdOf(const char* name) {
+    for (ItemCount i = 0; i < MIDIGetNumberOfSources(); ++i) {
+        const MIDIEndpointRef e = MIDIGetSource(i);
+        CFStringRef n = nullptr;
+        if (MIDIObjectGetStringProperty(e, kMIDIPropertyName, &n) != noErr || !n) continue;
+        char buf[128] = {};
+        CFStringGetCString(n, buf, sizeof buf, kCFStringEncodingUTF8);
+        CFRelease(n);
+        SInt32 id = 0;
+        if (std::string(buf) == name && MIDIObjectGetIntegerProperty(e, kMIDIPropertyUniqueID, &id) == noErr)
+            return id;
+    }
+    return 0;
+}
+
+void testPersistentId(CoreMidiOutput& out) {
+    // The same id every time it's published, so hosts remember the device.
+    constexpr std::int32_t kId = 0x75774354;   // "uwCT"
+    for (int run = 0; run < 2; ++run) {
+        const auto source = out.openVirtual("uw-core test persistent", MidiProtocol::Midi2, kId);
+        CHECK(source != kInvalidMidiDestination);
+        CHECK(uniqueIdOf("uw-core test persistent") == kId);
+        out.close(source);
+    }
+    // Without one, CoreMIDI picks.
+    const auto source = out.openVirtual("uw-core test persistent", MidiProtocol::Midi2);
+    CHECK(uniqueIdOf("uw-core test persistent") != 0);
+    out.close(source);
+}
+
 } // namespace
 
 int main() {
@@ -128,6 +161,7 @@ int main() {
     testVirtualSource(*out, *in, sink);
     testDestination(*out, *in, sink, MidiProtocol::Midi2, "uw-core test input 2.0", kNoteOn2);
     testDestination(*out, *in, sink, MidiProtocol::Midi1, "uw-core test input 1.0", kNoteOn1);
+    testPersistentId(*out);
 
     CHECK(out->open("no such destination") == kInvalidMidiDestination);
     in->setSink(nullptr);

@@ -53,7 +53,13 @@ public:
     // KeyEDO's "Publish to CoreMIDI"), sending `protocol`. The platform converts
     // for a receiver of the other protocol. Returns kInvalidMidiDestination on
     // failure.
-    virtual MidiDestinationHandle openVirtual(const std::string& name, MidiProtocol protocol) = 0;
+    //
+    // `persistentId`, if not 0, keeps the source the same device from one run
+    // to the next where the platform has such an id (CoreMIDI's unique ID), so
+    // hosts such as REAPER remember it instead of seeing a new device each
+    // launch. Taken already (another instance has it): the platform's own id.
+    virtual MidiDestinationHandle openVirtual(const std::string& name, MidiProtocol protocol,
+                                              std::int32_t persistentId = 0) = 0;
 
     virtual void close(MidiDestinationHandle destination) = 0;
 

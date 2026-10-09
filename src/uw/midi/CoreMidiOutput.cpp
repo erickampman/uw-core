@@ -151,7 +151,8 @@ MidiDestinationHandle CoreMidiOutput::open(const std::string& destinationId) {
     return handle;
 }
 
-MidiDestinationHandle CoreMidiOutput::openVirtual(const std::string& sourceName, MidiProtocol protocol) {
+MidiDestinationHandle CoreMidiOutput::openVirtual(const std::string& sourceName, MidiProtocol protocol,
+                                                  std::int32_t persistentId) {
     Opened o;
     o.isVirtual = true;
     o.id        = sourceName;
@@ -164,6 +165,9 @@ MidiDestinationHandle CoreMidiOutput::openVirtual(const std::string& sourceName,
                      sourceName.c_str(), static_cast<int>(result));
         return kInvalidMidiDestination;
     }
+    // CoreMIDI refuses an id another endpoint has (kMIDIIDNotUnique); then the
+    // one it chose stays.
+    if (persistentId != 0) MIDIObjectSetIntegerProperty(o.endpoint, kMIDIPropertyUniqueID, persistentId);
     const MidiDestinationHandle handle = nextHandle++;
     opened[handle] = o;
     return handle;

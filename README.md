@@ -131,3 +131,6 @@ For StageHand's switch to uw-core:
   translating. `CoreMidiOutput` implements it; the ALSA sequencer's is next,
   on the Linux PC. `PlatformMidiOutput.h` defines `UW_HAVE_MIDI_OUTPUT` (0
   where there's none yet).
+- `MidiOutput::openVirtual(name, protocol, persistentId)` (2026-10-09): a
+  published source can keep one CoreMIDI unique ID across launches, so
+  hosts such as REAPER remember it, as KeyEDO's fixed "KEDO" id does.

@@ -22,7 +22,7 @@ namespace uw {
 // list of its own protocol, so CoreMIDI passes it through untouched when the
 // caller has matched the destination, as the seam asks. A virtual source is
 // made with MIDISourceCreateWithProtocol, and CoreMIDI converts for receivers
-// of the other protocol.
+// of the other protocol, and a persistentId becomes its kMIDIPropertyUniqueID.
 //
 // Ids have CoreMidiInput's shape, "<device>:<endpoint>", or just "<endpoint>"
 // for another app's virtual destination.
@@ -41,7 +41,8 @@ public:
 
     std::vector<MidiDestinationInfo> enumerate() override;
     MidiDestinationHandle            open(const std::string& destinationId) override;
-    MidiDestinationHandle            openVirtual(const std::string& name, MidiProtocol protocol) override;
+    MidiDestinationHandle            openVirtual(const std::string& name, MidiProtocol protocol,
+                                                 std::int32_t persistentId = 0) override;
     void                             close(MidiDestinationHandle destination) override;
     MidiProtocol                     protocol(MidiDestinationHandle destination) const override;
     bool                             send(MidiDestinationHandle destination, const MidiMessage* messages,
