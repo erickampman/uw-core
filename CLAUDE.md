@@ -21,6 +21,12 @@ there. On the Mac, Umpire's docs are wherever its clone is, likely under
   a pin uw-core's remote doesn't have yet (README.md, "Pushing: uw-core
   first").
 
+- Change uw-core only in this clone (`~/Dev-Common/uw-core` on the Mac,
+  `~/dev/dev-common/uw-core` on the Linux PC), never inside a consumer's
+  `external/uw-core` submodule. Commit, test and push here; then in the
+  consumer, `git -C external/uw-core pull` and commit the pin. Each clone is
+  its own repository, so a commit made in a submodule stays invisible here
+  until it goes through GitHub.
 - The author commits to `main` directly. Never open pull requests. Ask before
   pushing.
 - One milestone per session, about a day of work each.
