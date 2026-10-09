@@ -20,7 +20,7 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
-| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS) | `uw::base`; alsa-lib | the apps |
+| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: CoreMIDI (macOS); ALSA to come | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
 Every target is built with hidden symbols, so a copy linked into a plugin
 can't bind to another plugin's copy in the same host.
@@ -77,6 +77,10 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
   blocks into memory. It skips if none is installed.
 - `test-backends` checks for a JACK server without starting one, and opens
   and closes an ALSA sequencer client.
+- `test-coremidi-output` (macOS) sends UMP through `CoreMidiOutput` to a
+  `CoreMidiInput` in the same process, over a virtual source and virtual
+  destinations of both protocols, and checks the words arrive untouched.
+  Its endpoints exist only while it runs.
 
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
 warnings in StageHand's CI (macOS 15, Apple Silicon). Nothing has run them on
@@ -119,3 +123,11 @@ For StageHand's switch to uw-core:
     `com.unlikelyware.stagehand`.
   - JACK's server probe client is "uw-core-probe".
 - New tests: `ClapHostTests`, `BackendTests`.
+
+### Since the copy
+
+- `MidiOutput` (2026-10-09, for KeyboardEDO): the output seam beside
+  `MidiInput`, sending UMP to a destination or from a virtual source, never
+  translating. `CoreMidiOutput` implements it; the ALSA sequencer's is next,
+  on the Linux PC. `PlatformMidiOutput.h` defines `UW_HAVE_MIDI_OUTPUT` (0
+  where there's none yet).
