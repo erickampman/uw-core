@@ -20,7 +20,7 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
-| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: CoreMIDI (macOS); ALSA to come | `uw::base`; alsa-lib | the apps, KeyboardEDO |
+| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
 Every target is built with hidden symbols, so a copy linked into a plugin
 can't bind to another plugin's copy in the same host.
@@ -81,6 +81,11 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
   `CoreMidiInput` in the same process, over a virtual source and virtual
   destinations of both protocols, and checks the words arrive untouched.
   Its endpoints exist only while it runs.
+- `test-alsa-output` (Linux) does the same through `AlsaSeqOutput` and
+  `AlsaSeqInput`, and also checks a destination coming and going, a burst of
+  300 messages arriving in order without an overrun, and a legacy (pre-UMP)
+  client receiving MIDI 1.0 as ordinary sequencer events. Its ports exist
+  only while it runs.
 
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
 warnings in StageHand's CI (macOS 15, Apple Silicon). Nothing has run them on
@@ -134,3 +139,15 @@ For StageHand's switch to uw-core:
 - `MidiOutput::openVirtual(name, protocol, persistentId)` (2026-10-09): a
   published source can keep one CoreMIDI unique ID across launches, so
   hosts such as REAPER remember it, as KeyEDO's fixed "KEDO" id does.
+- `AlsaSeqOutput` (2026-10-12, KeyboardEDO's milestone 3b): `MidiOutput` on
+  the ALSA sequencer, with `AlsaSeqInput`'s two UMP clients ("<name>" for
+  MIDI 1.0, "<name> MIDI 2.0"), so a published source shows the protocol it
+  sends. Destinations are sent to directly, without a subscription;
+  published sources send to their subscribers. ALSA has no persistent id, so
+  `persistentId` is ignored there. Hotplug announcements are read when
+  `changes()` is called, with no thread. Each client's output pool is the
+  kernel's most (2000), and a send waits at most 10 ms for a slow receiver
+  to make room. `UW_HAVE_MIDI_OUTPUT` is now 1 on Linux too.
+- `AlsaSeqInput`'s clients take the kernel's largest input pool (2000
+  events, from ALSA's default 200), so a burst from a fast sender doesn't
+  overrun and lose what was queued.

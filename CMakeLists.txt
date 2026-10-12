@@ -10,7 +10,7 @@ project(uw-core VERSION 0.1.0 LANGUAGES CXX)
 #   uw::plugin     the plugin seam (interfaces only)
 #   uw::clap-host  the plugin seam's CLAP implementation
 #   uw::audio      JACK (Linux) / CoreAudio (macOS)
-#   uw::midi       ALSA sequencer UMP (Linux) / CoreMIDI (macOS) input; CoreMIDI output
+#   uw::midi       ALSA sequencer UMP (Linux) / CoreMIDI (macOS) input and output
 
 option(UW_CORE_UMP_ONLY "Build only uw::ump (for plugins: no CLAP, JACK or ALSA needed)" OFF)
 option(UW_CORE_BACKENDS "Build uw::audio and uw::midi (Linux: needs JACK and ALSA)" ON)
@@ -88,7 +88,7 @@ if(NOT UW_CORE_UMP_ONLY AND UW_CORE_BACKENDS)
         pkg_check_modules(UW_ALSA REQUIRED IMPORTED_TARGET alsa>=1.2.10)   # UMP sequencer API
         target_sources(uw-audio PRIVATE src/uw/audio/JackBackend.cpp)
         target_link_libraries(uw-audio PUBLIC PkgConfig::UW_JACK)
-        target_sources(uw-midi PRIVATE src/uw/midi/AlsaSeqInput.cpp)
+        target_sources(uw-midi PRIVATE src/uw/midi/AlsaSeqInput.cpp src/uw/midi/AlsaSeqOutput.cpp)
         target_link_libraries(uw-midi PUBLIC PkgConfig::UW_ALSA)
     endif()
     foreach(backend uw-audio uw-midi)
@@ -113,6 +113,7 @@ if(UW_CORE_TESTS)
         uw_add_test(test-clap-host tests/ClapHostTests.cpp uw-clap-host)
         if(UW_CORE_BACKENDS AND NOT APPLE)
             uw_add_test(test-backends tests/BackendTests.cpp "uw-audio;uw-midi")
+            uw_add_test(test-alsa-output tests/AlsaSeqOutputTests.cpp uw-midi)
         endif()
         if(UW_CORE_BACKENDS AND APPLE)
             uw_add_test(test-coremidi-output tests/CoreMidiOutputTests.cpp uw-midi)

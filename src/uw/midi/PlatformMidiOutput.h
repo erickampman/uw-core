@@ -1,14 +1,17 @@
 #pragma once
 
-// The MIDI output this platform's app uses. Only CoreMIDI so far: the ALSA
-// sequencer's is to come (KeyboardEDO's roadmap, milestone 3). Elsewhere
-// UW_HAVE_MIDI_OUTPUT is 0 and there is no PlatformMidiOutput.
+// The MIDI output this platform's app uses. Both have the same create() and
+// describe(), beyond the MidiOutput seam. UW_HAVE_MIDI_OUTPUT is 1 on both
+// (it was 0 on Linux until AlsaSeqOutput).
 #ifdef __APPLE__
 #include "uw/midi/CoreMidiOutput.h"
-#define UW_HAVE_MIDI_OUTPUT 1
 namespace uw {
 using PlatformMidiOutput = CoreMidiOutput;
 }
 #else
-#define UW_HAVE_MIDI_OUTPUT 0
+#include "uw/midi/AlsaSeqOutput.h"
+namespace uw {
+using PlatformMidiOutput = AlsaSeqOutput;
+}
 #endif
+#define UW_HAVE_MIDI_OUTPUT 1

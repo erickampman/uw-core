@@ -22,6 +22,11 @@ namespace {
 // capture never preempts audio.
 constexpr int kMidiThreadPriority = 60;
 
+// Events queued for us before the MIDI thread reads them. ALSA's default, 200,
+// overruns on a burst (a fast sender, a controller dump); the kernel's most
+// (SNDRV_SEQ_MAX_EVENTS) doesn't.
+constexpr int kInputPool = 2000;
+
 const char* midiVersionName(int version) {
     switch (version) {
         case SND_SEQ_CLIENT_UMP_MIDI_1_0: return "UMP MIDI 1.0";
@@ -61,6 +66,7 @@ std::unique_ptr<AlsaSeqInput> AlsaSeqInput::create(const std::string& clientName
             return nullptr;
         }
         snd_seq_set_client_name(input->seq[c], input->clientNames[c].c_str());
+        snd_seq_set_client_pool_input(input->seq[c], kInputPool);   // the default if refused
         input->clientId[c] = snd_seq_client_id(input->seq[c]);
     }
 
