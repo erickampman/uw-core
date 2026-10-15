@@ -13,6 +13,7 @@
 #include "Check.h"
 #include "uw/midi/CoreMidiInput.h"
 #include "uw/midi/CoreMidiOutput.h"
+#include "uw/ump/UmpStream.h"
 
 using namespace uw;
 
@@ -147,6 +148,86 @@ void testPersistentId(CoreMidiOutput& out) {
     out.close(source);
 }
 
+// The stream messages among `got`, in order.
+std::vector<MidiMessage> streamOnly(const std::vector<MidiMessage>& got) {
+    std::vector<MidiMessage> out;
+    for (const auto& m : got)
+        if (ump::isStream(m)) out.push_back(m);
+    return out;
+}
+
+void testEndpoint(CoreMidiOutput& out, CoreMidiInput& in, Collector& sink) {
+    // A UMP endpoint of our own, as KeyboardEDO publishes: its source plays,
+    // keeps the persistent id, and its destination answers discovery.
+    constexpr std::int32_t kId   = 0x75774345;   // "uwCE"
+    const char*            kName = "uw-core test endpoint";
+    ump::EndpointInfo      e;
+    e.name              = kName;
+    e.productInstanceId = "uw-core-test-1";
+    e.blocks            = {{"Keyboard", 0, 1, ump::FunctionBlock::Direction::Output, true}};
+    const auto source   = out.openEndpoint(e, MidiProtocol::Midi2, kId);
+    CHECK(source != kInvalidMidiDestination);
+    CHECK(out.protocol(source) == MidiProtocol::Midi2);
+    CHECK(out.inquiries(source) == 0);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(uniqueIdOf(kName) == kId);
+
+    const auto listening = in.open(kName);
+    CHECK(listening != kInvalidMidiSource);
+    CHECK(out.send(source, &kNoteOn2, 1));
+    auto got = sink.wait(1);
+    CHECK(got.size() == 1 && same(got[0], kNoteOn2));
+
+    // A peer's discovery, sent to the endpoint's destination, is answered on
+    // its source (and counted).
+    const auto peer = out.open(kName);
+    CHECK(peer != kInvalidMidiDestination);
+    const MidiMessage ask[] = {ump::endpointDiscovery(0x0D), ump::functionBlockDiscovery()};
+    CHECK(out.send(peer, ask, 2));
+    got = streamOnly(sink.wait(6));   // info, name (two), Product Instance ID; block info and name
+    CHECK(got.size() == 6);
+    CHECK(out.inquiries(source) == 2);
+    if (got.size() == 6) {
+        CHECK(ump::streamStatus(got[0]) == ump::StreamStatus::EndpointInfo);
+        CHECK((got[0].words[1] >> 24 & 0x7F) == 1);
+        ump::StreamText name, id;
+        name.add(got[1], 2);
+        name.add(got[2], 2);
+        id.add(got[3], 2);
+        CHECK(name.complete() && name.text == kName);
+        CHECK(id.complete() && id.text == "uw-core-test-1");
+        CHECK(ump::streamStatus(got[4]) == ump::StreamStatus::FunctionBlockInfo);
+        CHECK(got[4].words[1] == 0x00010000);   // group 1, one group
+    }
+    out.close(peer);
+
+    // New blocks: a new endpoint, the same name and id, answering with them.
+    CHECK(out.setFunctionBlocks(source, {{"Keyboard", 0, 5, ump::FunctionBlock::Direction::Output, true}}));
+    CHECK(out.setFunctionBlocks(source, {{"Keyboard", 0, 5, ump::FunctionBlock::Direction::Output, true}}));   // unchanged
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(uniqueIdOf(kName) == kId);
+    in.close(listening);
+    const auto again = in.open(kName);   // as a host reconnects
+    CHECK(again != kInvalidMidiSource);
+    const auto peer2 = out.open(kName);
+    CHECK(peer2 != kInvalidMidiDestination);
+    const MidiMessage askBlocks = ump::functionBlockDiscovery(0xFF, 0x01);
+    CHECK(out.send(peer2, &askBlocks, 1));
+    got = streamOnly(sink.wait(1));
+    CHECK(got.size() == 1 && got[0].words[1] == 0x00050000);   // groups 1-5
+    CHECK(out.inquiries(source) == 3);
+    CHECK(out.send(source, &kNoteOn2, 1));
+    got = sink.wait(1);
+    CHECK(got.size() == 1 && same(got[0], kNoteOn2));
+    out.close(peer2);
+    in.close(again);
+
+    out.close(source);
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(uniqueIdOf(kName) == 0);   // gone
+    CHECK(!out.setFunctionBlocks(source, {}));
+}
+
 } // namespace
 
 int main() {
@@ -162,6 +243,7 @@ int main() {
     testDestination(*out, *in, sink, MidiProtocol::Midi2, "uw-core test input 2.0", kNoteOn2);
     testDestination(*out, *in, sink, MidiProtocol::Midi1, "uw-core test input 1.0", kNoteOn1);
     testPersistentId(*out);
+    testEndpoint(*out, *in, sink);
 
     CHECK(out->open("no such destination") == kInvalidMidiDestination);
     in->setSink(nullptr);

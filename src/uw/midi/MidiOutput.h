@@ -6,6 +6,7 @@
 #include <vector>
 
 #include "uw/ump/MidiMessage.h"
+#include "uw/ump/UmpStream.h"
 
 namespace uw {
 
@@ -60,6 +61,38 @@ public:
     // launch. Taken already (another instance has it): the platform's own id.
     virtual MidiDestinationHandle openVirtual(const std::string& name, MidiProtocol protocol,
                                               std::int32_t persistentId = 0) = 0;
+
+    // Publish a source, as openVirtual(endpoint.name, ...), that is also a UMP
+    // endpoint: it declares the endpoint's identity (Product Instance ID,
+    // device identity) and function blocks to the system (CoreMIDI's UMP
+    // endpoint cache), and answers a peer's Endpoint and Function Block
+    // Discovery itself (ump::answerDiscovery). Where the platform has no UMP
+    // endpoints for apps, or this backend doesn't make them yet, it's
+    // openVirtual(), and the identity goes nowhere.
+    virtual MidiDestinationHandle openEndpoint(const ump::EndpointInfo& endpoint, MidiProtocol protocol,
+                                               std::int32_t persistentId = 0) {
+        return openVirtual(endpoint.name, protocol, persistentId);
+    }
+
+    // Replace an endpoint's function blocks. The platform may have to remake
+    // the endpoint to show other apps the change (CoreMIDI does: see
+    // CoreMidiOutput.h), which drops their connections to it, so call it only
+    // when the blocks really change. False if `destination` isn't an endpoint
+    // or the platform refused.
+    virtual bool setFunctionBlocks(MidiDestinationHandle destination, const std::vector<ump::FunctionBlock>& blocks) {
+        (void)destination;
+        (void)blocks;
+        return false;
+    }
+
+    // How many discovery messages an endpoint has answered: each is a peer
+    // that has just started listening, so the caller can send again whatever
+    // setup it sent when the endpoint opened (a receiver connecting is
+    // otherwise silent). It goes up on the platform's thread.
+    virtual std::uint64_t inquiries(MidiDestinationHandle destination) const {
+        (void)destination;
+        return 0;
+    }
 
     virtual void close(MidiDestinationHandle destination) = 0;
 

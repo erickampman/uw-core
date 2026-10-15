@@ -32,7 +32,7 @@ add_library(uw-warnings INTERFACE)
 target_compile_options(uw-warnings INTERFACE -Wall -Wextra -Wpedantic)
 
 # --- uw::ump: no dependencies, usable from C++17 plugins ------------------------
-add_library(uw-ump STATIC src/uw/ump/Ump.cpp)
+add_library(uw-ump STATIC src/uw/ump/Ump.cpp src/uw/ump/UmpStream.cpp)
 add_library(uw::ump ALIAS uw-ump)
 target_include_directories(uw-ump PUBLIC src)
 target_compile_features(uw-ump PUBLIC cxx_std_17)
@@ -80,8 +80,13 @@ if(NOT UW_CORE_UMP_ONLY AND UW_CORE_BACKENDS)
     if(APPLE)
         target_sources(uw-audio PRIVATE src/uw/audio/CoreAudioBackend.cpp)
         target_link_libraries(uw-audio PUBLIC "-framework CoreAudio" "-framework CoreFoundation")
-        target_sources(uw-midi PRIVATE src/uw/midi/CoreMidiInput.cpp src/uw/midi/CoreMidiOutput.cpp)
-        target_link_libraries(uw-midi PUBLIC "-framework CoreMIDI" "-framework CoreFoundation")
+        # CoreMIDI's UMP endpoint API is Objective-C only: CoreMidiEndpoint.mm
+        # is uw-core's one Objective-C++ file (ARC), behind a C++ class.
+        enable_language(OBJCXX)
+        target_sources(uw-midi PRIVATE src/uw/midi/CoreMidiInput.cpp src/uw/midi/CoreMidiOutput.cpp
+                                       src/uw/midi/CoreMidiEndpoint.mm)
+        set_source_files_properties(src/uw/midi/CoreMidiEndpoint.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(uw-midi PUBLIC "-framework CoreMIDI" "-framework CoreFoundation" "-framework Foundation")
     else()
         find_package(PkgConfig REQUIRED)
         pkg_check_modules(UW_JACK REQUIRED IMPORTED_TARGET jack)

@@ -15,6 +15,8 @@ typedef struct __CFRunLoop* CFRunLoopRef;
 
 namespace uw {
 
+class CoreMidiEndpoint;
+
 // MidiOutput over CoreMIDI's UMP API (MIDISendEventList, MIDIReceivedEventList).
 //
 // One output port sends to every opened destination. A destination's protocol
@@ -23,6 +25,14 @@ namespace uw {
 // caller has matched the destination, as the seam asks. A virtual source is
 // made with MIDISourceCreateWithProtocol, and CoreMIDI converts for receivers
 // of the other protocol, and a persistentId becomes its kMIDIPropertyUniqueID.
+//
+// openEndpoint() (macOS 15 and later) publishes through a UMP endpoint of
+// our own (CoreMidiEndpoint), whose source gets the persistentId as
+// openVirtual()'s does. setFunctionBlocks() makes a new endpoint, the same
+// name and unique ID, as CoreMIDI shows other apps no change to an enabled
+// one's blocks; apps connected to the old one have to connect again (a host
+// that remembers the unique ID, as for a relaunch). Before macOS 15 it's
+// openVirtual().
 //
 // Ids have CoreMidiInput's shape, "<device>:<endpoint>", or just "<endpoint>"
 // for another app's virtual destination.
@@ -43,6 +53,11 @@ public:
     MidiDestinationHandle            open(const std::string& destinationId) override;
     MidiDestinationHandle            openVirtual(const std::string& name, MidiProtocol protocol,
                                                  std::int32_t persistentId = 0) override;
+    MidiDestinationHandle            openEndpoint(const ump::EndpointInfo& endpoint, MidiProtocol protocol,
+                                                  std::int32_t persistentId = 0) override;
+    bool                             setFunctionBlocks(MidiDestinationHandle destination,
+                                                       const std::vector<ump::FunctionBlock>& blocks) override;
+    std::uint64_t                    inquiries(MidiDestinationHandle destination) const override;
     void                             close(MidiDestinationHandle destination) override;
     MidiProtocol                     protocol(MidiDestinationHandle destination) const override;
     bool                             send(MidiDestinationHandle destination, const MidiMessage* messages,
@@ -66,11 +81,19 @@ private:
         std::int32_t  uniqueId  = 0;       // the destination's, to find it first
         MIDIObjectRef endpoint  = 0;       // the destination now, or the virtual source; 0 if gone
         MidiProtocol  protocol  = MidiProtocol::Midi1;
+
+        // An openEndpoint() source: the endpoint, what it declares, and the
+        // discoveries it has answered.
+        std::unique_ptr<CoreMidiEndpoint>           ump;
+        ump::EndpointInfo                           declared;
+        std::int32_t                                persistentId = 0;
+        std::shared_ptr<std::atomic<std::uint64_t>> asked;
     };
 
     CoreMidiOutput() = default;
 
     std::vector<Destination> listDestinations() const;
+    bool                     makeEndpoint(Opened& o);
     bool findDestination(const std::string& id, std::int32_t uniqueId, Destination& found) const;
 
     MIDIObjectRef client = 0;

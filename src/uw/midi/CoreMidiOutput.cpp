@@ -6,6 +6,7 @@
 #include <cstdio>
 #include <future>
 
+#include "uw/midi/CoreMidiEndpoint.h"
 #include "uw/ump/Ump.h"
 
 namespace uw {
@@ -147,7 +148,7 @@ MidiDestinationHandle CoreMidiOutput::open(const std::string& destinationId) {
     o.endpoint = found.endpoint;
     o.protocol = found.info.protocol;
     const MidiDestinationHandle handle = nextHandle++;
-    opened[handle] = o;
+    opened[handle] = std::move(o);
     return handle;
 }
 
@@ -169,14 +170,57 @@ MidiDestinationHandle CoreMidiOutput::openVirtual(const std::string& sourceName,
     // one it chose stays.
     if (persistentId != 0) MIDIObjectSetIntegerProperty(o.endpoint, kMIDIPropertyUniqueID, persistentId);
     const MidiDestinationHandle handle = nextHandle++;
-    opened[handle] = o;
+    opened[handle] = std::move(o);
     return handle;
+}
+
+MidiDestinationHandle CoreMidiOutput::openEndpoint(const ump::EndpointInfo& endpoint, MidiProtocol protocol,
+                                                   std::int32_t persistentId) {
+    Opened o;
+    o.isVirtual    = true;
+    o.id           = endpoint.name;
+    o.protocol     = protocol;
+    o.declared     = endpoint;
+    o.persistentId = persistentId;
+    o.asked        = std::make_shared<std::atomic<std::uint64_t>>(0);
+    if (!makeEndpoint(o)) return openVirtual(endpoint.name, protocol, persistentId);   // before macOS 15
+    const MidiDestinationHandle handle = nextHandle++;
+    opened[handle] = std::move(o);
+    return handle;
+}
+
+// The endpoint `o` declares, made anew, its source given o's persistent id.
+bool CoreMidiOutput::makeEndpoint(Opened& o) {
+    o.ump.reset();   // first, so the new source can take the old one's id
+    o.endpoint = 0;
+    o.ump      = CoreMidiEndpoint::create(o.declared, o.protocol, o.asked);
+    if (!o.ump) return false;
+    o.endpoint = o.ump->source();
+    if (o.persistentId != 0) MIDIObjectSetIntegerProperty(o.endpoint, kMIDIPropertyUniqueID, o.persistentId);
+    return true;
+}
+
+bool CoreMidiOutput::setFunctionBlocks(MidiDestinationHandle destination, const std::vector<ump::FunctionBlock>& blocks) {
+    const auto it = opened.find(destination);
+    if (it == opened.end() || !it->second.ump) return false;
+    Opened& o = it->second;
+    if (o.declared.blocks == blocks) return true;
+    o.declared.blocks = blocks;
+    return makeEndpoint(o);
+}
+
+std::uint64_t CoreMidiOutput::inquiries(MidiDestinationHandle destination) const {
+    const auto it = opened.find(destination);
+    return it == opened.end() || !it->second.asked ? 0 : it->second.asked->load();
 }
 
 void CoreMidiOutput::close(MidiDestinationHandle destination) {
     const auto it = opened.find(destination);
     if (it == opened.end()) return;
-    if (it->second.isVirtual && it->second.endpoint != 0) MIDIEndpointDispose(it->second.endpoint);
+    if (it->second.ump)
+        it->second.ump.reset();   // CoreMIDI disposes of its source
+    else if (it->second.isVirtual && it->second.endpoint != 0)
+        MIDIEndpointDispose(it->second.endpoint);
     opened.erase(it);
 }
 

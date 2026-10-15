@@ -7,6 +7,7 @@
 
 #include "Check.h"
 #include "uw/ump/Ump.h"
+#include "uw/ump/UmpStream.h"
 
 using namespace uw;
 
@@ -253,9 +254,92 @@ void testWordCounts() {
         CHECK(ump::wordCountForType(mt) == expected[mt]);
 }
 
+// UMP Stream (UmpStream.h): an endpoint's answers to discovery, field by
+// field as UMP 1.1 lays them out.
+void testStream() {
+    ump::EndpointInfo e;
+    e.name              = "KeyboardEDO";                        // 11 bytes: one message
+    e.productInstanceId = "0123456789abcdef-0123456789";       // 27 bytes: two
+    e.manufacturer      = {0x7D, 0, 0};
+    e.family            = 0x0181;                               // 14-bit: LSB 0x01, MSB 0x03
+    e.model             = 2;
+    e.revision          = {0, 1, 0, 0};
+    e.blocks            = {{"Keyboard", 0, 5, ump::FunctionBlock::Direction::Output, true}};
+
+    const MidiMessage discovery = ump::endpointDiscovery();
+    CHECK(discovery.wordCount == 4);
+    CHECK(discovery.words[0] == 0xF0000101 && discovery.words[1] == 0x1F);
+
+    std::vector<MidiMessage> out;
+    CHECK(ump::answerDiscovery(discovery, e, out));
+    CHECK(out.size() == 1 + 1 + 1 + 2 + 1);
+    if (out.size() == 6) {
+        CHECK(out[0].words[0] == 0xF0010101);                   // endpoint info, UMP 1.1
+        CHECK(out[0].words[1] == ((1u << 24) | (1u << 9)));     // one block, not static; MIDI 2.0
+        CHECK(out[1].words[0] == 0xF0020000);                   // device identity
+        CHECK(out[1].words[1] == 0x007D0000);
+        CHECK(out[1].words[2] == 0x01030200);
+        CHECK(out[1].words[3] == 0x00010000);
+        CHECK(ump::streamStatus(out[2]) == ump::StreamStatus::EndpointName);
+        ump::StreamText name;
+        name.add(out[2], 2);
+        CHECK(name.complete() && name.text == "KeyboardEDO");
+        CHECK(out[2].words[0] == 0xF0034B65);                   // complete, "Ke"
+        ump::StreamText id;
+        id.add(out[3], 2);
+        CHECK(!id.complete());
+        CHECK((out[3].words[0] >> 26 & 3) == 1);                // start
+        CHECK((out[4].words[0] >> 26 & 3) == 3);                // end
+        id.add(out[4], 2);
+        CHECK(id.complete() && id.text == e.productInstanceId);
+        CHECK(out[5].words[0] == 0xF0060200);                   // stream configuration: MIDI 2.0, no JR
+    }
+
+    out.clear();   // just the name
+    CHECK(ump::answerDiscovery(ump::endpointDiscovery(0x04), e, out));
+    CHECK(out.size() == 1);
+
+    // Function blocks: info and name, for all or one.
+    out.clear();
+    CHECK(ump::answerDiscovery(ump::functionBlockDiscovery(), e, out));
+    CHECK(out.size() == 2);
+    if (out.size() == 2) {
+        CHECK(out[0].words[0] == 0xF0118022);   // active, block 0, sender, output
+        CHECK(out[0].words[1] == 0x00050000);   // groups 1-5
+        ump::StreamText name;
+        name.add(out[1], 3);
+        CHECK(name.complete() && name.text == "Keyboard");
+        CHECK(out[1].words[0] == 0xF012004B);   // block 0, "K"
+    }
+    out.clear();
+    CHECK(ump::answerDiscovery(ump::functionBlockDiscovery(1), e, out));   // no block 1
+    CHECK(out.empty());
+    out.clear();
+    CHECK(ump::answerDiscovery(ump::functionBlockDiscovery(0, 0x01), e, out));
+    CHECK(out.size() == 1);
+
+    // A long name: 13 bytes a message after the block number.
+    e.blocks[0].name = std::string(30, 'x');
+    out.clear();
+    ump::functionBlockNameNotification(e, 0, out);
+    CHECK(out.size() == 3);
+    ump::StreamText long30;
+    for (const auto& m : out) long30.add(m, 3);
+    CHECK(long30.complete() && long30.text == e.blocks[0].name);
+
+    // Anything else isn't answered.
+    MidiMessage note;
+    note.words[0]  = 0x20903C64;
+    note.wordCount = 1;
+    out.clear();
+    CHECK(!ump::answerDiscovery(note, e, out));
+    CHECK(out.empty());
+}
+
 } // namespace
 
 int main() {
+    testStream();
     testFieldAccess();
     testNoteOnOffSemantics();
     testProtocolClassification();

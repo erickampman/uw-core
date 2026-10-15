@@ -15,12 +15,12 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 
 | Target | What | Needs | Used by |
 |---|---|---|---|
-| `uw::ump` | `MidiMessage` (one UMP), message classification and fields, MIDI 1.0 ↔ 2.0 translation, value scaling, transposition (Pitch 7.9 aware), the MIDI 1.0 byte parser | nothing; C++17; position-independent | the apps, the plugins |
+| `uw::ump` | `MidiMessage` (one UMP), message classification and fields, MIDI 1.0 ↔ 2.0 translation, value scaling, transposition (Pitch 7.9 aware), the MIDI 1.0 byte parser, UMP Stream messages (endpoint and function block discovery and its answers: `UmpStream.h`) | nothing; C++17; position-independent | the apps, the plugins |
 | `uw::base` | the shared clock, SPSC queue, denormal control, audio buffers, transport time, events | `uw::ump`; C++20 | the apps |
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
-| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
+| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS); a published source can be a UMP endpoint with function blocks (`openEndpoint`: CoreMIDI, macOS 15+, in `CoreMidiEndpoint.mm`, uw-core's one Objective-C++ file) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
 Every target is built with hidden symbols, so a copy linked into a plugin
 can't bind to another plugin's copy in the same host.
@@ -80,7 +80,10 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
 - `test-coremidi-output` (macOS) sends UMP through `CoreMidiOutput` to a
   `CoreMidiInput` in the same process, over a virtual source and virtual
   destinations of both protocols, and checks the words arrive untouched.
-  Its endpoints exist only while it runs.
+  It also publishes a UMP endpoint, sends discovery to its destination and
+  checks the answers on its source, before and after its function block
+  changes, and that its unique ID stays. Its endpoints exist only while it
+  runs.
 - `test-alsa-output` (Linux) does the same through `AlsaSeqOutput` and
   `AlsaSeqInput`, and also checks a destination coming and going, a burst of
   300 messages arriving in order without an overrun, and a legacy (pre-UMP)
