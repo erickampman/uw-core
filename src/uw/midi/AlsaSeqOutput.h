@@ -12,6 +12,8 @@ typedef struct _snd_seq snd_seq_t;
 
 namespace uw {
 
+class AlsaSeqEndpoint;
+
 // MidiOutput over the ALSA sequencer in UMP mode, beside AlsaSeqInput and with
 // its two clients, so a receiver always sees the protocol it is sent:
 //   "<name>"           UMP MIDI 1.0 client: sends to MIDI 1.0 destinations,
@@ -29,6 +31,13 @@ namespace uw {
 // subscribe to on the client of the protocol asked for, and sends to its
 // subscribers. ALSA has no persistent id: a published port is found by its
 // client and port name, as KeyEDO's are.
+//
+// openEndpoint() publishes a UMP endpoint instead (AlsaSeqEndpoint): a client
+// of its own, named after the endpoint, sending from its port 0, which the
+// kernel passes on to each group's port. setFunctionBlocks() changes it in
+// place, so receivers stay subscribed, and tells them about it in band.
+// inquiries() counts discovery answered and receivers subscribing. Before
+// alsa-lib 1.2.13, openEndpoint() is openVirtual().
 //
 // Ids have AlsaSeqInput's shape, "<client name>:<port name>", or a numeric
 // address ("128:0").
@@ -49,6 +58,11 @@ public:
     MidiDestinationHandle            open(const std::string& destinationId) override;
     MidiDestinationHandle            openVirtual(const std::string& name, MidiProtocol protocol,
                                                  std::int32_t persistentId = 0) override;
+    MidiDestinationHandle            openEndpoint(const ump::EndpointInfo& endpoint, MidiProtocol protocol,
+                                                  std::int32_t persistentId = 0) override;
+    bool                             setFunctionBlocks(MidiDestinationHandle destination,
+                                                       const std::vector<ump::FunctionBlock>& blocks) override;
+    std::uint64_t                    inquiries(MidiDestinationHandle destination) const override;
     void                             close(MidiDestinationHandle destination) override;
     MidiProtocol                     protocol(MidiDestinationHandle destination) const override;
     bool                             send(MidiDestinationHandle destination, const MidiMessage* messages,
@@ -58,8 +72,8 @@ public:
     const char*                      name() const override { return "ALSA sequencer"; }
 
     // Where a handle's messages go, e.g. "destination 'FluidSynth:Synth input
-    // port' at 128:0 (MIDI 1.0)", or "virtual source 129:0 on 'KeyboardEDO
-    // MIDI 2.0' (MIDI 2.0)".
+    // port' at 128:0 (MIDI 1.0)", "virtual source 129:0 on 'KeyboardEDO
+    // MIDI 2.0' (MIDI 2.0)", or "UMP endpoint 130:0 'KeyboardEDO' (MIDI 2.0)".
     std::string describe(MidiDestinationHandle destination) const;
 
 private:
@@ -78,12 +92,14 @@ private:
         int          port        = -1;         // ours: the virtual port, or the private one we send from
         int          destClient  = -1;         // the destination now; -1 if gone
         int          destPort    = -1;
+        std::unique_ptr<AlsaSeqEndpoint> ump;   // an openEndpoint() source: its own client, port 0
     };
 
     AlsaSeqOutput() = default;
 
     std::vector<Destination> listDestinations() const;
     bool                     findDestination(const std::string& id, Destination& found) const;
+    bool                     ownsEndpoint(int client) const;
     int                      senderPort(int clientIndex);
     static int               clientFor(MidiProtocol protocol) {
         return protocol == MidiProtocol::Midi2 ? kMidi2Client : kMidi1Client;

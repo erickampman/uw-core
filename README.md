@@ -20,7 +20,7 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
-| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS); a published source can be a UMP endpoint with function blocks (`openEndpoint`: CoreMIDI, macOS 15+, in `CoreMidiEndpoint.mm`, uw-core's one Objective-C++ file) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
+| `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS); a published source can be a UMP endpoint with function blocks (`openEndpoint`: CoreMIDI, macOS 15+, in `CoreMidiEndpoint.mm`, uw-core's one Objective-C++ file; the ALSA sequencer, alsa-lib 1.2.13+, a client of its own, in `AlsaSeqEndpoint`) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
 Every target is built with hidden symbols, so a copy linked into a plugin
 can't bind to another plugin's copy in the same host.
@@ -87,8 +87,11 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
 - `test-alsa-output` (Linux) does the same through `AlsaSeqOutput` and
   `AlsaSeqInput`, and also checks a destination coming and going, a burst of
   300 messages arriving in order without an overrun, and a legacy (pre-UMP)
-  client receiving MIDI 1.0 as ordinary sequencer events. Its ports exist
-  only while it runs.
+  client receiving MIDI 1.0 as ordinary sequencer events. Its endpoint test
+  reads the endpoint and block info back from the kernel, plays through a
+  group's port, has a peer client subscribe and send discovery, and changes
+  the blocks with both listeners still subscribed. Its clients and ports
+  exist only while it runs.
 
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
 warnings in StageHand's CI (macOS 15, Apple Silicon). Nothing has run them on
@@ -154,3 +157,18 @@ For StageHand's switch to uw-core:
 - `AlsaSeqInput`'s clients take the kernel's largest input pool (2000
   events, from ALSA's default 200), so a burst from a fast sender doesn't
   overrun and lose what was queued.
+- UMP endpoints (2026-10-15 to 10-19, KeyboardEDO's milestone 11a):
+  `uw::ump` Stream messages (`UmpStream.h`) and `MidiOutput::openEndpoint`,
+  `setFunctionBlocks` and `inquiries`. CoreMIDI's is `CoreMidiEndpoint.mm`
+  (macOS 15+), remade when the blocks change. The ALSA sequencer's is
+  `AlsaSeqEndpoint`: a client of its own named after the endpoint (the
+  kernel keeps one endpoint per client, on port 0), with a port for each
+  group, shown in the directions of the blocks that hold it. It sets the
+  kernel's endpoint and block info itself rather than with alsa-lib's
+  `snd_seq_create_ump_endpoint`/`_block`, which can't change a block once
+  made, so new blocks change it in place and receivers stay subscribed; the
+  listeners get the new Endpoint and Function Block Info in band. A thread
+  of its own answers discovery and counts it, and receivers subscribing, in
+  `inquiries()`. It needs alsa-lib 1.2.13 (the info's setters); with an
+  older one, such as Ubuntu 24.04's 1.2.11, `openEndpoint` publishes a plain
+  source.

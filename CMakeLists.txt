@@ -93,7 +93,8 @@ if(NOT UW_CORE_UMP_ONLY AND UW_CORE_BACKENDS)
         pkg_check_modules(UW_ALSA REQUIRED IMPORTED_TARGET alsa>=1.2.10)   # UMP sequencer API
         target_sources(uw-audio PRIVATE src/uw/audio/JackBackend.cpp)
         target_link_libraries(uw-audio PUBLIC PkgConfig::UW_JACK)
-        target_sources(uw-midi PRIVATE src/uw/midi/AlsaSeqInput.cpp src/uw/midi/AlsaSeqOutput.cpp)
+        target_sources(uw-midi PRIVATE src/uw/midi/AlsaSeqInput.cpp src/uw/midi/AlsaSeqOutput.cpp
+                                       src/uw/midi/AlsaSeqEndpoint.cpp)
         target_link_libraries(uw-midi PUBLIC PkgConfig::UW_ALSA)
     endif()
     foreach(backend uw-audio uw-midi)

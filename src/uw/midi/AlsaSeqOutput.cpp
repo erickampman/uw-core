@@ -1,5 +1,7 @@
 #include "uw/midi/AlsaSeqOutput.h"
 
+#include "uw/midi/AlsaSeqEndpoint.h"
+
 #include <alsa/asoundlib.h>
 #include <poll.h>
 
@@ -110,7 +112,7 @@ MidiDestinationHandle AlsaSeqOutput::open(const std::string& destinationId) {
     o.destPort    = found.port;
     if (o.port < 0) return kInvalidMidiDestination;
     const MidiDestinationHandle handle = nextHandle++;
-    opened[handle] = o;
+    opened[handle] = std::move(o);
     return handle;
 }
 
@@ -130,14 +132,45 @@ MidiDestinationHandle AlsaSeqOutput::openVirtual(const std::string& portName, Mi
         return kInvalidMidiDestination;
     }
     const MidiDestinationHandle handle = nextHandle++;
-    opened[handle] = o;
+    opened[handle] = std::move(o);
     return handle;
+}
+
+MidiDestinationHandle AlsaSeqOutput::openEndpoint(const ump::EndpointInfo& endpoint, MidiProtocol protocol,
+                                                  std::int32_t persistentId) {
+    Opened o;
+    o.isVirtual = true;
+    o.id        = endpoint.name;
+    o.protocol  = protocol;
+    o.ump       = AlsaSeqEndpoint::create(endpoint, protocol);
+    if (!o.ump) return openVirtual(endpoint.name, protocol, persistentId);
+    o.port = AlsaSeqEndpoint::port();
+    snd_seq_set_client_pool_output(o.ump->sequencer(), kOutputPool);   // the default if refused
+    const MidiDestinationHandle handle = nextHandle++;
+    opened[handle] = std::move(o);
+    return handle;
+}
+
+bool AlsaSeqOutput::setFunctionBlocks(MidiDestinationHandle destination, const std::vector<ump::FunctionBlock>& blocks) {
+    const auto it = opened.find(destination);
+    if (it == opened.end() || !it->second.ump) return false;
+    std::vector<MidiMessage> notify;
+    if (!it->second.ump->setFunctionBlocks(blocks, notify)) return false;
+    return notify.empty() || send(destination, notify.data(), notify.size());
+}
+
+std::uint64_t AlsaSeqOutput::inquiries(MidiDestinationHandle destination) const {
+    const auto it = opened.find(destination);
+    return it == opened.end() || !it->second.ump ? 0 : it->second.ump->inquiries();
 }
 
 void AlsaSeqOutput::close(MidiDestinationHandle destination) {
     const auto it = opened.find(destination);
     if (it == opened.end()) return;
-    if (it->second.isVirtual) snd_seq_delete_simple_port(seq[it->second.clientIndex], it->second.port);
+    if (it->second.ump)
+        it->second.ump.reset();   // its client goes, ports and all
+    else if (it->second.isVirtual)
+        snd_seq_delete_simple_port(seq[it->second.clientIndex], it->second.port);
     opened.erase(it);
 }
 
@@ -151,7 +184,7 @@ bool AlsaSeqOutput::send(MidiDestinationHandle destination, const MidiMessage* m
     if (it == opened.end()) return false;
     const Opened& o = it->second;
     if (!o.isVirtual && o.destClient < 0) return false;
-    snd_seq_t* const s = seq[o.clientIndex];
+    snd_seq_t* const s = o.ump ? o.ump->sequencer() : seq[o.clientIndex];
 
     // Writes what's buffered. A full pool (-EAGAIN: receivers behind on
     // reading) gets a short wait for room; anything else, a destination gone
@@ -241,6 +274,9 @@ std::string AlsaSeqOutput::describe(MidiDestinationHandle destination) const {
     const auto it = opened.find(destination);
     if (it == opened.end()) return "(not open)";
     const Opened& o = it->second;
+    if (o.ump)
+        return "UMP endpoint " + std::to_string(o.ump->client()) + ":" + std::to_string(o.port) + " '" + o.id +
+               "' (" + protocolName(o.protocol) + ")";
     if (o.isVirtual)
         return "virtual source " + std::to_string(clientId[o.clientIndex]) + ":" + std::to_string(o.port) +
                " on '" + clientNames[o.clientIndex] + "' (" + protocolName(o.protocol) + ")";
@@ -251,8 +287,8 @@ std::string AlsaSeqOutput::describe(MidiDestinationHandle destination) const {
 
 // --- helpers ------------------------------------------------------------------------
 
-// Writable, subscribable ports of every other client: what aconnect lists as
-// destinations.
+// Writable, subscribable ports of every client but ours (our endpoints too):
+// what aconnect lists as destinations.
 std::vector<AlsaSeqOutput::Destination> AlsaSeqOutput::listDestinations() const {
     std::vector<Destination> destinations;
     snd_seq_client_info_t* clientInfo = nullptr;
@@ -265,7 +301,7 @@ std::vector<AlsaSeqOutput::Destination> AlsaSeqOutput::listDestinations() const 
     while (snd_seq_query_next_client(s, clientInfo) >= 0) {
         const int client = snd_seq_client_info_get_client(clientInfo);
         if (client == SND_SEQ_CLIENT_SYSTEM || client == clientId[kMidi1Client] ||
-            client == clientId[kMidi2Client])
+            client == clientId[kMidi2Client] || ownsEndpoint(client))
             continue;
         const bool midi2Client = snd_seq_client_info_get_midi_version(clientInfo) == SND_SEQ_CLIENT_UMP_MIDI_2_0;
 
@@ -290,6 +326,13 @@ std::vector<AlsaSeqOutput::Destination> AlsaSeqOutput::listDestinations() const 
         }
     }
     return destinations;
+}
+
+// Whether `client` is one of our openEndpoint() endpoints'.
+bool AlsaSeqOutput::ownsEndpoint(int client) const {
+    for (const auto& [handle, o] : opened)
+        if (o.ump && o.ump->client() == client) return true;
+    return false;
 }
 
 // By id ("client name:port name") or numeric address ("128:0").

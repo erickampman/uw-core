@@ -25,7 +25,7 @@ struct MidiDestinationInfo {
 };
 
 // The MIDI-output seam, beside MidiInput: the only component that knows
-// CoreMIDI (CoreMidiOutput) or the ALSA sequencer (to come) for sending. Used
+// CoreMIDI (CoreMidiOutput) or the ALSA sequencer (AlsaSeqOutput) for sending. Used
 // by controllers such as KeyboardEDO; the apps will use it to play to hardware.
 //
 // It SENDS BUT NEVER TRANSLATES, as MidiInput wraps but never translates: the
@@ -65,7 +65,7 @@ public:
     // Publish a source, as openVirtual(endpoint.name, ...), that is also a UMP
     // endpoint: it declares the endpoint's identity (Product Instance ID,
     // device identity) and function blocks to the system (CoreMIDI's UMP
-    // endpoint cache), and answers a peer's Endpoint and Function Block
+    // endpoint cache, the ALSA sequencer's client UMP info), and answers a peer's Endpoint and Function Block
     // Discovery itself (ump::answerDiscovery). Where the platform has no UMP
     // endpoints for apps, or this backend doesn't make them yet, it's
     // openVirtual(), and the identity goes nowhere.
@@ -76,8 +76,8 @@ public:
 
     // Replace an endpoint's function blocks. The platform may have to remake
     // the endpoint to show other apps the change (CoreMIDI does: see
-    // CoreMidiOutput.h), which drops their connections to it, so call it only
-    // when the blocks really change. False if `destination` isn't an endpoint
+    // CoreMidiOutput.h; ALSA changes it in place), which drops their
+    // connections to it, so call it only when the blocks really change. False if `destination` isn't an endpoint
     // or the platform refused.
     virtual bool setFunctionBlocks(MidiDestinationHandle destination, const std::vector<ump::FunctionBlock>& blocks) {
         (void)destination;
@@ -88,7 +88,9 @@ public:
     // How many discovery messages an endpoint has answered: each is a peer
     // that has just started listening, so the caller can send again whatever
     // setup it sent when the endpoint opened (a receiver connecting is
-    // otherwise silent). It goes up on the platform's thread.
+    // otherwise silent). On ALSA, also each receiver subscribing to it, as
+    // that's how one starts listening there. It goes up on the platform's
+    // thread.
     virtual std::uint64_t inquiries(MidiDestinationHandle destination) const {
         (void)destination;
         return 0;

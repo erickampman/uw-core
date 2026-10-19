@@ -16,7 +16,7 @@
 ## M2: UMP endpoints (KeyboardEDO's milestone 11a)
 - [x] `uw::ump` UMP Stream messages: discovery, endpoint and function block notifications, answers (`UmpStream.h`)
 - [x] `MidiOutput::openEndpoint`, `setFunctionBlocks`, `inquiries`; CoreMIDI's in `CoreMidiEndpoint.mm` (macOS 15+)
-- [ ] The ALSA sequencer's: `snd_seq_create_ump_endpoint` / `snd_seq_create_ump_block` in `AlsaSeqOutput` (on the Linux PC)
+- [x] The ALSA sequencer's: `AlsaSeqEndpoint`, a client of its own with the kernel's endpoint and block info, changed in place
 
 ## M3: Later
 - [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)

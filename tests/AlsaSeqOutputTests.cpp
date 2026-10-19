@@ -13,6 +13,7 @@
 #include "Check.h"
 #include "uw/midi/AlsaSeqInput.h"
 #include "uw/midi/AlsaSeqOutput.h"
+#include "uw/ump/UmpStream.h"
 
 using namespace uw;
 
@@ -199,6 +200,179 @@ void testLegacyDestination(AlsaSeqOutput& out) {
     snd_seq_close(legacy);
 }
 
+#if SND_LIB_VERSION >= SND_LIB_VER(1, 2, 13)   // AlsaSeqEndpoint's
+// Waits up to two seconds for `inquiries` to reach `count`.
+bool inquiriesReach(const AlsaSeqOutput& out, MidiDestinationHandle h, std::uint64_t count) {
+    for (int i = 0; i < 200 && out.inquiries(h) < count; ++i)
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    return out.inquiries(h) == count;
+}
+
+// A peer of the endpoint, as another app would be: a UMP MIDI 2.0 client
+// with a port that sends to it and hears it.
+struct Peer {
+    snd_seq_t* seq  = nullptr;
+    int        port = -1;
+
+    Peer() {
+        if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_DUPLEX, SND_SEQ_NONBLOCK) < 0) return;
+        snd_seq_set_client_midi_version(seq, SND_SEQ_CLIENT_UMP_MIDI_2_0);
+        snd_seq_set_client_name(seq, "uw-core peer tests");
+        port = snd_seq_create_simple_port(seq, "peer", SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_WRITE,
+                                          SND_SEQ_PORT_TYPE_MIDI_GENERIC | SND_SEQ_PORT_TYPE_APPLICATION);
+    }
+    ~Peer() {
+        if (seq != nullptr) snd_seq_close(seq);
+    }
+    void send(int client, int toPort, const MidiMessage& m) {
+        snd_seq_ump_event_t event;
+        snd_seq_ump_ev_clear(&event);
+        snd_seq_ev_set_ump_data(&event, const_cast<std::uint32_t*>(m.words), m.wordCount * sizeof m.words[0]);
+        snd_seq_ev_set_source(&event, port);
+        snd_seq_ev_set_dest(&event, client, toPort);
+        snd_seq_ev_set_direct(&event);
+        CHECK(snd_seq_ump_event_output_direct(seq, &event) >= 0);
+    }
+    // Waits up to two seconds for `count` UMP Stream messages.
+    std::vector<MidiMessage> wait(std::size_t count) {
+        std::vector<MidiMessage> got;
+        for (int i = 0; i < 200 && got.size() < count;) {
+            snd_seq_ump_event_t* event = nullptr;
+            if (snd_seq_ump_event_input(seq, &event) < 0) {
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+                ++i;
+                continue;
+            }
+            if (!snd_seq_ev_is_ump(event) || (event->ump[0] >> 28) != 0xF) continue;
+            got.push_back(message(event->ump[0], event->ump[1], 4));
+            got.back().words[2] = event->ump[2];
+            got.back().words[3] = event->ump[3];
+        }
+        return got;
+    }
+};
+
+bool listed(AlsaSeqInput& in, const std::string& id) {
+    for (const auto& s : in.enumerate())
+        if (s.id == id) return true;
+    return false;
+}
+
+void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
+    // A UMP endpoint of our own, as KeyboardEDO publishes: a client of its own
+    // whose info the kernel holds, a port per group of its blocks, sending to
+    // their subscribers and answering a peer's discovery.
+    const std::string kName = "uw-core test endpoint";
+    ump::EndpointInfo e;
+    e.name              = kName;
+    e.productInstanceId = "uw-core-test-1";
+    e.manufacturer      = {0x7D, 0, 0};
+    e.family            = 0x0102;
+    e.model             = 0x0003;
+    e.revision          = {0, 1, 2, 3};
+    e.blocks            = {{"Keyboard", 0, 1, ump::FunctionBlock::Direction::Output, true}};
+    const auto source   = out.openEndpoint(e, MidiProtocol::Midi2);
+    CHECK(source != kInvalidMidiDestination);
+    CHECK(out.protocol(source) == MidiProtocol::Midi2);
+    CHECK(out.inquiries(source) == 0);
+    std::printf("  %s\n", out.describe(source).c_str());
+    for (const auto& d : out.enumerate()) CHECK(d.id.rfind(kName + ":", 0) != 0);   // not our own
+
+    // What other apps read from the kernel.
+    Peer peer;
+    CHECK(peer.port >= 0);
+    snd_seq_client_info_t* client = nullptr;
+    snd_seq_client_info_alloca(&client);
+    int endpoint = -1;
+    snd_seq_client_info_set_client(client, -1);
+    while (snd_seq_query_next_client(peer.seq, client) >= 0)
+        if (kName == snd_seq_client_info_get_name(client)) endpoint = snd_seq_client_info_get_client(client);
+    CHECK(endpoint >= 0);
+    snd_ump_endpoint_info_t* ep = nullptr;
+    snd_ump_endpoint_info_alloca(&ep);
+    CHECK(snd_seq_get_ump_endpoint_info(peer.seq, endpoint, ep) == 0);
+    CHECK(kName == snd_ump_endpoint_info_get_name(ep));
+    CHECK(std::string("uw-core-test-1") == snd_ump_endpoint_info_get_product_id(ep));
+    CHECK(snd_ump_endpoint_info_get_num_blocks(ep) == 1);
+    CHECK(snd_ump_endpoint_info_get_protocol(ep) == SND_UMP_EP_INFO_PROTO_MIDI2);
+    CHECK(snd_ump_endpoint_info_get_manufacturer_id(ep) == 0x7D0000);
+    CHECK(snd_ump_endpoint_info_get_family_id(ep) == 0x0202);   // 0x0102: 7-bit bytes 0x02, 0x02
+    CHECK(snd_ump_endpoint_info_get_model_id(ep) == 0x0003);
+    snd_ump_block_info_t* block = nullptr;
+    snd_ump_block_info_alloca(&block);
+    CHECK(snd_seq_get_ump_block_info(peer.seq, endpoint, 0, block) == 0);
+    CHECK(std::string("Keyboard") == snd_ump_block_info_get_name(block));
+    CHECK(snd_ump_block_info_get_first_group(block) == 0 && snd_ump_block_info_get_num_groups(block) == 1);
+    CHECK(snd_ump_block_info_get_direction(block) == SND_UMP_DIR_OUTPUT);
+    CHECK(listed(in, kName + ":MIDI 2.0"));
+    CHECK(listed(in, kName + ":Group 1 (Keyboard)"));
+    CHECK(!listed(in, kName + ":Group 2"));   // no block holds it
+
+    // A receiver subscribing to group 1's port is counted, and hears what's
+    // sent on group 1 (the kernel passes it on from port 0).
+    const auto group1 = in.open(kName + ":Group 1 (Keyboard)");
+    CHECK(group1 != kInvalidMidiSource);
+    CHECK(inquiriesReach(out, source, 1));
+    CHECK(out.send(source, &kNoteOn2, 1));
+    auto got = sink.wait(1);
+    CHECK(got.size() == 1 && same(got[0], kNoteOn2));
+
+    // A peer listening on port 0 (counted) asks; the answers come back to it.
+    CHECK(snd_seq_connect_from(peer.seq, peer.port, endpoint, 0) == 0);
+    CHECK(inquiriesReach(out, source, 2));
+    peer.send(endpoint, 0, ump::endpointDiscovery(0x0D));
+    peer.send(endpoint, 0, ump::functionBlockDiscovery());
+    auto answers = peer.wait(6);   // info, name (two), Product Instance ID; block info and name
+    CHECK(answers.size() == 6);
+    CHECK(inquiriesReach(out, source, 4));
+    if (answers.size() == 6) {
+        CHECK(ump::streamStatus(answers[0]) == ump::StreamStatus::EndpointInfo);
+        ump::StreamText name, id;
+        name.add(answers[1], 2);
+        name.add(answers[2], 2);
+        id.add(answers[3], 2);
+        CHECK(name.complete() && name.text == kName);
+        CHECK(id.complete() && id.text == "uw-core-test-1");
+        CHECK(ump::streamStatus(answers[4]) == ump::StreamStatus::FunctionBlockInfo);
+        CHECK(answers[4].words[1] == 0x00010000);   // group 1, one group
+    }
+
+    // New blocks, in place: the kernel's info and the ports change, both
+    // listeners stay subscribed, and the peer is told.
+    CHECK(out.setFunctionBlocks(source, {{"Keyboard", 0, 5, ump::FunctionBlock::Direction::Output, true}}));
+    answers = peer.wait(3);   // endpoint info; block info and name
+    CHECK(answers.size() == 3 && ump::streamStatus(answers[1]) == ump::StreamStatus::FunctionBlockInfo &&
+          answers[1].words[1] == 0x00050000);   // groups 1-5
+    CHECK(out.setFunctionBlocks(source, {{"Keyboard", 0, 5, ump::FunctionBlock::Direction::Output, true}}));   // unchanged
+    CHECK(peer.wait(1).empty());
+    CHECK(snd_seq_get_ump_block_info(peer.seq, endpoint, 0, block) == 0);
+    CHECK(snd_ump_block_info_get_num_groups(block) == 5);
+    CHECK(listed(in, kName + ":Group 5 (Keyboard)"));
+    CHECK(!listed(in, kName + ":Group 6"));
+    CHECK(out.send(source, &kNoteOn2, 1));
+    got = sink.wait(1);
+    CHECK(got.size() == 1 && same(got[0], kNoteOn2));
+    CHECK(out.inquiries(source) == 4);
+
+    in.close(group1);
+    out.close(source);
+    CHECK(snd_seq_get_ump_endpoint_info(peer.seq, endpoint, ep) < 0);   // gone
+    CHECK(!out.setFunctionBlocks(source, {}));
+    CHECK(out.inquiries(source) == 0);
+}
+#else
+void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput&, Collector&) {
+    // Before alsa-lib 1.2.13: a plain source, which has no blocks to change.
+    ump::EndpointInfo e;
+    e.name            = "uw-core test endpoint";
+    const auto source = out.openEndpoint(e, MidiProtocol::Midi2);
+    CHECK(source != kInvalidMidiDestination);
+    CHECK(out.describe(source).rfind("virtual source", 0) == 0);
+    CHECK(!out.setFunctionBlocks(source, {}));
+    out.close(source);
+}
+#endif
+
 } // namespace
 
 int main() {
@@ -217,6 +391,7 @@ int main() {
     testDestination(*out, *in, sink, MidiProtocol::Midi1, "uw-core test input 1.0", kNoteOn1);
     testManyMessages(*out, *in, sink);
     testLegacyDestination(*out);
+    testEndpoint(*out, *in, sink);
 
     CHECK(out->open("no such destination") == kInvalidMidiDestination);
     in->setSink(nullptr);
