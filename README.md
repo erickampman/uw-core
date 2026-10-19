@@ -171,4 +171,7 @@ For StageHand's switch to uw-core:
   of its own answers discovery and counts it, and receivers subscribing, in
   `inquiries()`. It needs alsa-lib 1.2.13 (the info's setters); with an
   older one, such as Ubuntu 24.04's 1.2.11, `openEndpoint` publishes a plain
-  source.
+  source. So does `AlsaSeqOutput`'s check for a MIDI 2.0 device's MIDI 1.0
+  port (`snd_seq_port_info_get_ump_is_midi1`): before 1.2.13 such a port is
+  taken as MIDI 2.0. That call broke StageHand's Linux CI from 2026-10-12;
+  uw-core's ALSA code now builds against 1.2.11's headers.

@@ -35,6 +35,17 @@ bool parseAddress(const std::string& text, int& client, int& port) {
     return true;
 }
 
+// A MIDI 2.0 client's port marked MIDI 1.0 (a function block's). alsa-lib 1.2.13 can say; before it
+// (Ubuntu 24.04 has 1.2.11), every port of a MIDI 2.0 client is taken as MIDI 2.0.
+bool isMidi1Port(const snd_seq_port_info_t* port) {
+#if SND_LIB_VERSION >= SND_LIB_VER(1, 2, 13)
+    return snd_seq_port_info_get_ump_is_midi1(port);
+#else
+    (void)port;
+    return false;
+#endif
+}
+
 bool isAnnouncement(int type) {
     switch (type) {
         case SND_SEQ_EVENT_CLIENT_START:
@@ -319,9 +330,7 @@ std::vector<AlsaSeqOutput::Destination> AlsaSeqOutput::listDestinations() const 
             d.info.id         = std::string(snd_seq_client_info_get_name(clientInfo)) + ":" + d.info.name;
             d.info.isVirtual  = snd_seq_client_info_get_type(clientInfo) == SND_SEQ_USER_CLIENT;
             d.info.isHardware = (snd_seq_port_info_get_type(portInfo) & SND_SEQ_PORT_TYPE_HARDWARE) != 0;
-            d.info.protocol   = midi2Client && !snd_seq_port_info_get_ump_is_midi1(portInfo)
-                                    ? MidiProtocol::Midi2
-                                    : MidiProtocol::Midi1;
+            d.info.protocol   = midi2Client && !isMidi1Port(portInfo) ? MidiProtocol::Midi2 : MidiProtocol::Midi1;
             destinations.push_back(d);
         }
     }
