@@ -18,5 +18,8 @@
 - [x] `MidiOutput::openEndpoint`, `setFunctionBlocks`, `inquiries`; CoreMIDI's in `CoreMidiEndpoint.mm` (macOS 15+)
 - [x] The ALSA sequencer's: `AlsaSeqEndpoint`, a client of its own with the kernel's endpoint and block info, changed in place
 
-## M3: Later
+## M3: Microtonal transpose (Retune's M1)
+- [x] `uw::ump`: `notePitch79`, `transposeNote79` (shift a MIDI 2.0 note by 1/512 semitone, written as Pitch 7.9), `transposePitch725` (its Pitch 7.25 partner)
+
+## M4: Later
 - [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)

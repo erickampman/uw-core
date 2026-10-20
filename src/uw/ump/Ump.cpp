@@ -71,6 +71,38 @@ bool transposeNote(MidiMessage& m, int semitones) noexcept {
     return true;
 }
 
+std::uint16_t notePitch79(const MidiMessage& m) noexcept {
+    if (messageType(m) == MessageType::Midi2ChannelVoice &&
+        static_cast<NoteAttribute>(m.words[0] & 0xFF) == NoteAttribute::Pitch7_9)
+        return static_cast<std::uint16_t>(m.words[1] & 0xFFFF);
+    return static_cast<std::uint16_t>(noteNumber(m) << 9);
+}
+
+bool transposeNote79(MidiMessage& m, int delta) noexcept {
+    if (messageType(m) != MessageType::Midi2ChannelVoice) return false;
+    const Status s = status(m);
+    if (s != Status::NoteOn && s != Status::NoteOff) return false;
+
+    const int pitch = static_cast<int>(notePitch79(m)) + delta;
+    if (pitch < 0 || pitch > 0xFFFF) return false;
+
+    const auto p = static_cast<std::uint32_t>(pitch);
+    m.words[0] = (m.words[0] & ~0x7FFFu) | ((p >> 9) << 8) |
+                 static_cast<std::uint32_t>(NoteAttribute::Pitch7_9);
+    m.words[1] = (m.words[1] & 0xFFFF0000u) | p;
+    return true;
+}
+
+bool transposePitch725(MidiMessage& m, int delta) noexcept {
+    if (messageType(m) != MessageType::Midi2ChannelVoice ||
+        status(m) != Status::RegisteredPerNoteController || (m.words[0] & 0xFF) != 3)
+        return false;
+    const std::int64_t pitch = std::int64_t{m.words[1]} + std::int64_t{delta} * (std::int64_t{1} << 16);   // 7.25: 2^16 per 1/512
+    if (pitch < 0 || pitch > 0xFFFFFFFF) return false;
+    m.words[1] = static_cast<std::uint32_t>(pitch);
+    return true;
+}
+
 std::size_t toMidi1Bytes(const MidiMessage& m, std::uint8_t out[3]) noexcept {
     const std::uint32_t w0         = m.words[0];
     const auto          statusByte = static_cast<std::uint8_t>((w0 >> 16) & 0xFF);

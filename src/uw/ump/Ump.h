@@ -198,6 +198,25 @@ std::size_t downconvert(const MidiMessage& in, MidiMessage* out,
 // 0..127.
 bool transposeNote(MidiMessage& m, int semitones) noexcept;
 
+// Absolute pitch of a note on/off in 7.9 (512 per semitone): the Pitch7_9
+// attribute of a MIDI 2.0 note carrying one, otherwise the note number << 9.
+std::uint16_t notePitch79(const MidiMessage& m) noexcept;
+
+// Transpose a MIDI 2.0 (MT 0x4) note on/off by `delta` in 1/512 semitone, for
+// microtonal shifts. The result is written as a Pitch7_9 attribute and the note
+// number becomes its integer part, so a receiver that ignores the attribute
+// plays the nearest note below. Any other attribute (manufacturer or profile
+// specific) is replaced. Returns false (message unchanged) for anything but a
+// MIDI 2.0 note on/off, or if the pitch would leave 0..127 + 511/512.
+bool transposeNote79(MidiMessage& m, int delta) noexcept;
+
+// Move the value of a Pitch 7.25 (MIDI 2.0 registered per-note controller 3) by
+// `delta` in 1/512 semitone, leaving its note number (the note it addresses)
+// alone. The partner of transposeNote79 for a note that was shifted by a
+// fraction. Returns false (message unchanged) for any other message, or if the
+// pitch would leave the 7.25 range.
+bool transposePitch725(MidiMessage& m, int delta) noexcept;
+
 // ---------------------------------------------------------------------------
 // MIDI 1.0 bytes <-> UMP (for non-UMP sources, and for MIDI-dialect plugins)
 // ---------------------------------------------------------------------------

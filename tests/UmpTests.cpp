@@ -113,6 +113,52 @@ void testTranspose() {
     CHECK(ump::transposeNote(cc, 5) && cc.words[0] == 0x20B00764);     // no note: untouched
 }
 
+void testTranspose79() {
+    MidiMessage plain = packet(0x40903C00, 0x8000'0000);               // 60, no attribute
+    CHECK(ump::notePitch79(plain) == (60u << 9));
+    CHECK(ump::transposeNote79(plain, 171));                           // +1/3 semitone
+    CHECK(plain.words[0] == 0x40903C03);                               // still 60, attribute type 3
+    CHECK(plain.words[1] == 0x8000'0000u + (60u << 9) + 171u);         // velocity kept
+
+    MidiMessage attr = packet(0x40903D03, 0x8000'7B00);                // 61 + pitch 61.5
+    CHECK(ump::transposeNote79(attr, 3 * 512 + 256));                  // +3.5 -> 65.0
+    CHECK(ump::noteNumber(attr) == 65 && ump::notePitch79(attr) == (65u << 9));
+
+    MidiMessage down = packet(0x40903C00, 0x8000'0000);
+    CHECK(ump::transposeNote79(down, -1));                             // 60 - 1/512 -> 59.998
+    CHECK(ump::noteNumber(down) == 59 && ump::notePitch79(down) == (60u << 9) - 1);
+
+    MidiMessage mfr = packet(0x40903C01, 0x8000'1234);                 // manufacturer attribute
+    CHECK(ump::transposeNote79(mfr, 512));                             // replaced by Pitch7_9
+    CHECK(mfr.words[0] == 0x40903D03 && (mfr.words[1] & 0xFFFF) == (61u << 9));
+
+    MidiMessage off = packet(0x40803C00, 0x0000'0000);                 // note-off too
+    CHECK(ump::transposeNote79(off, 256) && (off.words[1] & 0xFFFF) == (60u << 9) + 256);
+
+    MidiMessage top = packet(0x40907F03, 0x8000'FF00);                 // 127.5
+    CHECK(!ump::transposeNote79(top, 256) && top.words[1] == 0x8000'FF00);   // past 127.998
+    CHECK(ump::transposeNote79(top, 255) && ump::notePitch79(top) == 0xFFFF);
+    MidiMessage bottom = packet(0x40900000, 0x8000'0000);
+    CHECK(!ump::transposeNote79(bottom, -1) && bottom.words[0] == 0x40900000);
+
+    MidiMessage m1 = packet(0x20903C64);                               // MIDI 1.0: refused
+    CHECK(!ump::transposeNote79(m1, 512) && m1.words[0] == 0x20903C64);
+    CHECK(ump::notePitch79(m1) == (60u << 9));
+    MidiMessage pnpb = packet(0x40603C00, 0x8000'0000);                // per-note bend: refused
+    CHECK(!ump::transposeNote79(pnpb, 512));
+
+    MidiMessage p725 = packet(0x40003C03, 60u << 25);                  // Pitch 7.25 on 60: 60.0
+    CHECK(ump::transposePitch725(p725, 171));                          // +1/3: value only
+    CHECK(p725.words[0] == 0x40003C03 && p725.words[1] == (60u << 25) + (171u << 16));
+    CHECK(ump::transposePitch725(p725, -171) && p725.words[1] == (60u << 25));
+    MidiMessage p725top = packet(0x40003C03, 0xFFFF'0000);             // 127 + 511/512
+    CHECK(!ump::transposePitch725(p725top, 1) && p725top.words[1] == 0xFFFF'0000);
+    MidiMessage p725low = packet(0x40003C03, 0);
+    CHECK(!ump::transposePitch725(p725low, -1) && p725low.words[1] == 0);
+    MidiMessage other = packet(0x40003C01, 0x1234'5678);               // other registered controller
+    CHECK(!ump::transposePitch725(other, 171) && other.words[1] == 0x1234'5678);
+}
+
 // Feed a MIDI 1.0 CV packet through upconvert(); returns the outputs.
 std::vector<MidiMessage> up(ump::UpconvertState& state, std::uint32_t w0) {
     MidiMessage out[ump::kMaxTranslatedMessages];
@@ -357,6 +403,7 @@ int main() {
     testScaling();
     testToMidi1Bytes();
     testTranspose();
+    testTranspose79();
     testUpconvert();
     testDownconvert();
     testRoundTrip();
