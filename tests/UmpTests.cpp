@@ -96,6 +96,16 @@ void testTranspose() {
     CHECK((m2.words[1] & 0xFFFF) == ((60u << 9) | 256u));              // pitch moved too: 60.5
     CHECK((m2.words[1] >> 16) == 0x8000);                              // velocity kept
 
+    MidiMessage p725 = packet(0x40003D03, (61u << 25) | (1u << 24));   // Pitch 7.25 on 61: 61.5
+    CHECK(ump::transposeNote(p725, 2) && ump::noteNumber(p725) == 63);
+    CHECK(p725.words[1] == ((63u << 25) | (1u << 24)));               // value moved too: 63.5
+    MidiMessage p725top = packet(0x40003D03, 0xFE00'0000);             // 127.0 on 61
+    CHECK(!ump::transposeNote(p725top, 1));                            // pitch out of range...
+    CHECK(ump::noteNumber(p725top) == 61);                             // ...and unchanged
+    MidiMessage rpnc = packet(0x40003D01, 0x1234'5678);                // other registered controller
+    CHECK(ump::transposeNote(rpnc, 2) && ump::noteNumber(rpnc) == 63);
+    CHECK(rpnc.words[1] == 0x1234'5678);                               // value untouched
+
     MidiMessage top = packet(0x20907F64);
     CHECK(!ump::transposeNote(top, 1));                                // out of range...
     CHECK(ump::noteNumber(top) == 127);                                // ...and unchanged

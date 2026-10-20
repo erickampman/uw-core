@@ -193,7 +193,8 @@ std::size_t downconvert(const MidiMessage& in, MidiMessage* out,
 
 // Transpose a note message by `semitones`. For a MIDI 2.0 note carrying a
 // Pitch7_9 attribute, the attribute moves by the same amount so microtonal pitch
-// stays correct. Returns false (message unchanged) if the result would leave
+// stays correct, and so does the value of a Pitch 7.25 (registered per-note
+// controller 3), which is absolute too. Returns false (message unchanged) if the result would leave
 // 0..127.
 bool transposeNote(MidiMessage& m, int semitones) noexcept;
 

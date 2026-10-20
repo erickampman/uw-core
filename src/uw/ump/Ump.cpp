@@ -61,6 +61,11 @@ bool transposeNote(MidiMessage& m, int semitones) noexcept {
         if (pitch < 0 || pitch > 0xFFFF) return false;
         w1 = (w1 & 0xFFFF0000u) | static_cast<std::uint32_t>(pitch);
     }
+    if (midi2 && s == Status::RegisteredPerNoteController && (m.words[0] & 0xFF) == 3) {   // Pitch 7.25
+        const std::int64_t pitch = std::int64_t{w1} + std::int64_t{semitones} * (std::int64_t{1} << 25);
+        if (pitch < 0 || pitch > 0xFFFFFFFF) return false;
+        w1 = static_cast<std::uint32_t>(pitch);
+    }
     m.words[0] = w0;
     m.words[1] = w1;
     return true;
