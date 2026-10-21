@@ -17,6 +17,9 @@ struct ParameterInfo {
     double        defaultValue  = 0.0;
     bool          isAutomatable = true;
     bool          isStepped     = false;
+    bool          isHidden      = false;   // not for the user: a host's own controls leave it out
+    bool          isReadOnly    = false;   // shown, never set by the host
+    std::string   module;                  // where it belongs, as a path ("Osc 1/Filter"); may be empty
 };
 
 } // namespace uw

@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <string>
 #include <vector>
 
 #include "uw/base/AudioBuffer.h"
@@ -72,6 +73,10 @@ public:
     // parameter audibly, the engine sends a ParamValue Event into process();
     // there is deliberately no direct RT setter here.
     virtual double paramValue(std::uint32_t id) const = 0;
+    // A value of parameter `id` as the plugin writes it ("440 Hz", "Saw"),
+    // for a host's own controls (main thread). False: the plugin has no text
+    // for it, and the host shows the number.
+    virtual bool paramValueText(std::uint32_t /*id*/, double /*value*/, std::string& /*text*/) const { return false; }
 
     // Apply parameter changes / collect feedback while NOT processing (main
     // thread) — the stopped-transport path (CLAP params.flush).

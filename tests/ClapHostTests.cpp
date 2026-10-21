@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <string>
 #include <vector>
 
 #include "Check.h"
@@ -123,6 +124,13 @@ void noteEffect() {
     const auto midi = std::count_if(out.events.begin(), out.events.end(),
                                     [](const uw::Event& e) { return e.type == uw::EventType::Midi; });
     CHECK(midi >= 1);
+    if (it->name == "Retune") {   // its parameters, with the plugin's own value text
+        const auto params = plugin->parameters();
+        CHECK(params.size() == 3 && params[0].name == "Divisions" && params[0].isStepped && !params[0].isHidden &&
+              !params[0].isReadOnly);
+        std::string text;
+        CHECK(plugin->paramValueText(0, 31.0, text) && text == "31");
+    }
     if (it->name == "Retune") {   // at its defaults, the same note comes out, as MIDI 2.0, at the same time
         CHECK(midi == 1);
         const auto on = std::find_if(out.events.begin(), out.events.end(),

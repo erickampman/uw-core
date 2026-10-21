@@ -25,5 +25,8 @@
 - [x] `uw::ump::fromMidi1Bytes`: one MIDI 1.0 message's bytes → MT 0x2/0x1 (the reverse of `toMidi1Bytes`)
 - [x] `ClapPlugin`: a plugin's note, MIDI and MIDI 2.0 output events reach the `EventSink` as `Midi` events with their offsets and port
 
-## M5: Later
+## M5: Parameters for a host's own controls (StageHand's generic editor)
+- [x] `ParameterInfo`: hidden, read-only and module from CLAP; `HostedPlugin::paramValueText` (CLAP `value_to_text`)
+
+## M6: Later
 - [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)

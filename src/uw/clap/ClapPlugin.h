@@ -38,6 +38,7 @@ public:
     const PluginDescriptor&    descriptor() const override { return desc; }
     PortLayout                 portLayout() const override;
     std::vector<ParameterInfo> parameters() const override;
+    bool paramValueText(std::uint32_t id, double value, std::string& text) const override;
     bool                       activate(double sampleRate, std::uint32_t maxBlockFrames) override;
     void                       deactivate() override;
     void                       process(const ProcessContext& ctx) noexcept override;

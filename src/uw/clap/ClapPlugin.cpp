@@ -188,9 +188,21 @@ std::vector<ParameterInfo> ClapPlugin::parameters() const {
         param.defaultValue  = info.default_value;
         param.isAutomatable = (info.flags & CLAP_PARAM_IS_AUTOMATABLE) != 0;
         param.isStepped     = (info.flags & CLAP_PARAM_IS_STEPPED) != 0;
+        param.isHidden      = (info.flags & CLAP_PARAM_IS_HIDDEN) != 0;
+        param.isReadOnly    = (info.flags & CLAP_PARAM_IS_READONLY) != 0;
+        param.module        = info.module;
         list.push_back(param);
     }
     return list;
+}
+
+bool ClapPlugin::paramValueText(std::uint32_t id, double value, std::string& text) const {
+    if (paramsExt == nullptr || paramsExt->value_to_text == nullptr) return false;
+    char buffer[256] = {};
+    if (!paramsExt->value_to_text(plugin, id, value, buffer, sizeof buffer)) return false;
+    buffer[sizeof buffer - 1] = '\0';
+    text = buffer;
+    return true;
 }
 
 double ClapPlugin::paramValue(std::uint32_t id) const {
