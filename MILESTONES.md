@@ -21,5 +21,9 @@
 ## M3: Microtonal transpose (Retune's M1)
 - [x] `uw::ump`: `notePitch79`, `transposeNote79` (shift a MIDI 2.0 note by 1/512 semitone, written as Pitch 7.9), `transposePitch725` (its Pitch 7.25 partner)
 
-## M4: Later
+## M4: Plugin output events (StageHand's note effects)
+- [x] `uw::ump::fromMidi1Bytes`: one MIDI 1.0 message's bytes → MT 0x2/0x1 (the reverse of `toMidi1Bytes`)
+- [x] `ClapPlugin`: a plugin's note, MIDI and MIDI 2.0 output events reach the `EventSink` as `Midi` events with their offsets and port
+
+## M5: Later
 - [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)

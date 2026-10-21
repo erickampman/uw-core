@@ -1,6 +1,8 @@
 // uw::clap-host against the CLAP plugins installed here (~/.clap, $CLAP_PATH):
 // create an instrument, activate it, and process one block with a MIDI 2.0
-// note-on into memory. Nothing reaches an audio device. Skips if none is found.
+// note-on into memory; and a note effect, whose notes must come out of
+// process() as MIDI events. Nothing reaches an audio device. Each part skips if
+// no such plugin is found.
 
 #include <algorithm>
 #include <cmath>
@@ -79,10 +81,66 @@ void instrument() {
     plugin->deactivate();
 }
 
+struct Collect final : uw::EventSink {
+    std::vector<uw::Event> events;
+    void push(const uw::Event& e) noexcept override { events.push_back(e); }   // allocates: fine in a test
+};
+
+// A note effect (Retune, if it's installed: a known pass-through at its
+// defaults) hands its output notes to the sink, in their own protocol.
+void noteEffect() {
+    uw::ClapPluginFactory factory;
+    const auto            found = factory.scan();
+    auto it = std::find_if(found.begin(), found.end(), [](const uw::PluginDescriptor& d) { return d.name == "Retune"; });
+    if (it == found.end())
+        it = std::find_if(found.begin(), found.end(), [](const uw::PluginDescriptor& d) { return d.kind == uw::PluginKind::Other; });
+    if (it == found.end()) {
+        std::printf("clap-host: no CLAP note effect installed; skipped\n");
+        return;
+    }
+    std::printf("clap-host: note effect %s\n", it->name.c_str());
+
+    TestHost   host;
+    const auto plugin = factory.create(*it, host);
+    CHECK(plugin != nullptr);
+    if (!plugin) return;
+    const uw::PortLayout layout = plugin->portLayout();
+    CHECK(!layout.noteInputs.empty() && !layout.noteOutputs.empty());
+    constexpr std::uint32_t kFrames = 256;
+    CHECK(plugin->activate(48000.0, kFrames));
+
+    uw::Event note;
+    note.type         = uw::EventType::Midi;
+    note.sampleOffset = 17;
+    note.midi         = midi2NoteOn(60, 0xC000);
+    Collect            out;
+    uw::ProcessContext ctx;
+    ctx.frameCount      = kFrames;
+    ctx.time.sampleRate = 48000.0;
+    ctx.eventsIn        = uw::EventBlock{&note, 1};
+    ctx.eventsOut       = &out;
+    plugin->process(ctx);
+    const auto midi = std::count_if(out.events.begin(), out.events.end(),
+                                    [](const uw::Event& e) { return e.type == uw::EventType::Midi; });
+    CHECK(midi >= 1);
+    if (it->name == "Retune") {   // at its defaults, the same note comes out, as MIDI 2.0, at the same time
+        CHECK(midi == 1);
+        const auto on = std::find_if(out.events.begin(), out.events.end(),
+                                     [](const uw::Event& e) { return e.type == uw::EventType::Midi; });
+        CHECK(on != out.events.end() && on->midi.wordCount == 2 && on->sampleOffset == 17 &&
+              (on->midi.words[0] >> 28) == 0x4 && ((on->midi.words[0] >> 8) & 0x7F) == 60 &&
+              (on->midi.words[1] >> 16) == 0xC000);
+    }
+
+    plugin->stopProcessing();
+    plugin->deactivate();
+}
+
 } // namespace
 
 int main() {
     unknownFile();
     instrument();
+    noteEffect();
     return uw::test::finish("clap-host");
 }

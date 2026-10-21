@@ -86,6 +86,30 @@ void testToMidi1Bytes() {
     CHECK(ump::toMidi1Bytes(packet(0x40903C00, 0x8000'0000), bytes) == 0);   // MIDI 2.0: no
 }
 
+void testFromMidi1Bytes() {
+    MidiMessage m;
+    const std::uint8_t noteOn[3] = {0x91, 0x3C, 0x64};
+    CHECK(ump::fromMidi1Bytes(noteOn, 3, 2, m) && m.wordCount == 1 && m.words[0] == 0x22913C64);
+    const std::uint8_t silentOn[3] = {0x90, 0x3C, 0x00};   // stays a note-on, as on input
+    CHECK(ump::fromMidi1Bytes(silentOn, 3, 0, m) && m.words[0] == 0x20903C00);
+    const std::uint8_t program[3] = {0xC0, 0x05, 0x7F};   // the third byte isn't its
+    CHECK(ump::fromMidi1Bytes(program, 3, 0, m) && m.words[0] == 0x20C00500);
+    const std::uint8_t clock[3] = {0xF8, 0, 0};
+    CHECK(ump::fromMidi1Bytes(clock, 3, 0, m) && m.words[0] == 0x10F80000);
+    const std::uint8_t songPosition[3] = {0xF2, 0x03, 0x04};
+    CHECK(ump::fromMidi1Bytes(songPosition, 3, 0, m) && m.words[0] == 0x10F20304);
+    std::uint8_t round[3] = {};
+    CHECK(ump::fromMidi1Bytes(noteOn, 3, 0, m) && ump::toMidi1Bytes(m, round) == 3 &&
+          round[0] == 0x91 && round[1] == 0x3C && round[2] == 0x64);
+    const std::uint8_t sysex[3] = {0xF0, 0x7E, 0x7F};
+    CHECK(!ump::fromMidi1Bytes(sysex, 3, 0, m));
+    const std::uint8_t data[3] = {0x3C, 0x64, 0x00};
+    CHECK(!ump::fromMidi1Bytes(data, 3, 0, m));
+    CHECK(!ump::fromMidi1Bytes(noteOn, 2, 0, m));        // cut short
+    const std::uint8_t twoStatus[3] = {0x90, 0x80, 0x00};
+    CHECK(!ump::fromMidi1Bytes(twoStatus, 3, 0, m));
+}
+
 void testTranspose() {
     MidiMessage m1 = packet(0x20903C64);
     CHECK(ump::transposeNote(m1, 2) && ump::noteNumber(m1) == 62);
@@ -402,6 +426,7 @@ int main() {
     testWordCounts();
     testScaling();
     testToMidi1Bytes();
+    testFromMidi1Bytes();
     testTranspose();
     testTranspose79();
     testUpconvert();

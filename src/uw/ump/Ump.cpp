@@ -125,6 +125,18 @@ std::size_t toMidi1Bytes(const MidiMessage& m, std::uint8_t out[3]) noexcept {
     }
 }
 
+bool fromMidi1Bytes(const std::uint8_t* bytes, std::size_t size, std::uint8_t group,
+                    MidiMessage& out) noexcept {
+    if (size == 0 || bytes[0] < 0x80 || bytes[0] == 0xF0 || bytes[0] == 0xF7) return false;
+    Midi1ParserState state;
+    state.group = group & 0x0F;
+    for (std::size_t i = 0; i < size; ++i) {
+        if (i > 0 && bytes[i] >= 0x80) return false;   // a second status byte: not one message
+        if (parseMidi1Byte(bytes[i], state, out)) return true;
+    }
+    return false;
+}
+
 // --- translation ------------------------------------------------------------------
 
 namespace {

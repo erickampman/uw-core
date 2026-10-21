@@ -247,4 +247,11 @@ bool parseMidi1Byte(std::uint8_t byte, Midi1ParserState& state,
 // for CLAP's clap_event_midi). Returns the byte count, or 0 if not representable.
 std::size_t toMidi1Bytes(const MidiMessage& m, std::uint8_t out[3]) noexcept;
 
+// The reverse, for one complete message with its status byte (no running
+// status), such as CLAP's clap_event_midi: channel voice → MT 0x2, system
+// common and real-time → MT 0x1, in `group`. Bytes past the message's length
+// are ignored. Returns false for SysEx, a stray data byte, or too few bytes.
+bool fromMidi1Bytes(const std::uint8_t* bytes, std::size_t size, std::uint8_t group,
+                    MidiMessage& out) noexcept;
+
 } // namespace uw::ump

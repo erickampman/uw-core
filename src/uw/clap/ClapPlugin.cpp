@@ -434,8 +434,14 @@ const clap_event_header_t* ClapPlugin::inEventsGet(const clap_input_events_t* li
     return index < self->inEventCount ? &self->inEvents[index].header : nullptr;
 }
 
-// Parameter feedback from the plugin (its own GUI, internal modulation) goes to
-// the engine's sink; everything else is ignored for now.
+// What the plugin sends goes to the engine's sink with its sample offset:
+// parameter feedback (its own GUI, internal modulation), and notes and MIDI (a
+// note effect's output). MIDI keeps its protocol, as on input: CLAP_EVENT_MIDI
+// as MT 0x2 (0x1 for system messages), CLAP_EVENT_MIDI2 as it is. A CLAP note
+// on or off becomes a MIDI 2.0 one in group 1, keeping the velocity's
+// resolution; one with a wildcard key or channel has no message, and a note
+// end or choke reports a voice, not a message. SysEx and note expressions are
+// dropped for now.
 bool ClapPlugin::outEventsTryPush(const clap_output_events_t* list, const clap_event_header_t* header) {
     auto* self = static_cast<ClapPlugin*>(list->ctx);
     if (self->currentSink == nullptr || header->space_id != CLAP_CORE_EVENT_SPACE_ID) return true;
@@ -456,6 +462,32 @@ bool ClapPlugin::outEventsTryPush(const clap_output_events_t* list, const clap_e
             event.type    = header->type == CLAP_EVENT_PARAM_GESTURE_BEGIN ? EventType::ParamGestureBegin
                                                                            : EventType::ParamGestureEnd;
             event.param   = ParamRef{g->param_id, nullptr};
+            break;
+        }
+        case CLAP_EVENT_MIDI: {
+            const auto* m = reinterpret_cast<const clap_event_midi_t*>(header);
+            if (!ump::fromMidi1Bytes(m->data, 3, 0, event.midi)) return true;
+            event.portIndex = m->port_index;
+            break;
+        }
+        case CLAP_EVENT_MIDI2: {
+            const auto* m = reinterpret_cast<const clap_event_midi2_t*>(header);
+            for (int i = 0; i < 4; ++i) event.midi.words[i] = m->data[i];
+            event.midi.wordCount = ump::wordCountForType(static_cast<std::uint8_t>(m->data[0] >> 28));
+            event.portIndex      = m->port_index;
+            break;
+        }
+        case CLAP_EVENT_NOTE_ON:
+        case CLAP_EVENT_NOTE_OFF: {
+            const auto* n = reinterpret_cast<const clap_event_note_t*>(header);
+            if (n->key < 0 || n->key > 127 || n->channel < 0 || n->channel > 15) return true;
+            const std::uint32_t status   = header->type == CLAP_EVENT_NOTE_ON ? 0x9u : 0x8u;
+            const double        velocity = std::clamp(n->velocity, 0.0, 1.0);
+            event.midi.words[0]  = (0x4u << 28) | (status << 20) | (static_cast<std::uint32_t>(n->channel) << 16) |
+                                  (static_cast<std::uint32_t>(n->key) << 8);
+            event.midi.words[1]  = static_cast<std::uint32_t>(std::lround(velocity * 65535.0)) << 16;
+            event.midi.wordCount = 2;
+            event.portIndex      = n->port_index < 0 ? 0 : static_cast<std::uint16_t>(n->port_index);
             break;
         }
         default:
