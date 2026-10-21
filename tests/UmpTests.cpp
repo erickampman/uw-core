@@ -196,6 +196,29 @@ std::vector<MidiMessage> down(std::uint32_t w0, std::uint32_t w1) {
     return {out, out + n};
 }
 
+void testBuildNotes() {
+    // MIDI 2.0: a fraction goes in a Pitch 7.9 attribute; the key's own pitch needs none.
+    const uw::MidiMessage on = ump::midi2NoteOn(2, 5, 60, 0x8000, (60 << 9) + 171);
+    CHECK(on.wordCount == 2 && on.words[0] == 0x42953C03u && on.words[1] == 0x80000000u + (60u << 9) + 171);
+    CHECK(ump::isNoteOn(on) && ump::group(on) == 2 && ump::channel(on) == 5 && ump::noteNumber(on) == 60);
+    CHECK(ump::notePitch79(on) == (60u << 9) + 171 && ump::velocity16(on) == 0x8000);
+    const uw::MidiMessage whole = ump::midi2NoteOn(0, 0, 60, 0x8000, 60 << 9);
+    CHECK(whole.words[0] == 0x40903C00u && whole.words[1] == 0x80000000u);
+    CHECK(ump::midi2NoteOn(0, 0, 60, 0x8000).words[0] == 0x40903C00u);   // no pitch: none
+    const uw::MidiMessage off = ump::midi2NoteOff(2, 5, 60);
+    CHECK(off.wordCount == 2 && off.words[0] == 0x42853C00u && off.words[1] == 0 && ump::isNoteOff(off));
+
+    // MIDI 1.0: velocity 0 would be a note off, so it's 1.
+    const uw::MidiMessage on1 = ump::midi1NoteOn(1, 3, 64, 100);
+    CHECK(on1.wordCount == 1 && on1.words[0] == 0x21934064u && ump::isNoteOn(on1));
+    CHECK(ump::midi1NoteOn(0, 0, 64, 0).words[0] == 0x20904001u);
+    const uw::MidiMessage off1 = ump::midi1NoteOff(1, 3, 64);
+    CHECK(off1.words[0] == 0x21834000u && ump::isNoteOff(off1));
+
+    // constexpr: usable in tables.
+    static_assert(ump::midi2NoteOff(0, 0, 60).words[0] == 0x40803C00u);
+}
+
 void testUpconvert() {
     ump::UpconvertState state;
 
@@ -429,6 +452,7 @@ int main() {
     testFromMidi1Bytes();
     testTranspose();
     testTranspose79();
+    testBuildNotes();
     testUpconvert();
     testDownconvert();
     testRoundTrip();

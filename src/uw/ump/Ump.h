@@ -8,6 +8,7 @@
 // UMP helpers shared by the MIDI seam and the engine's router/translator:
 //   - field accessors (inline, header-only)
 //   - value scaling, velocity16, transposeNote, toMidi1Bytes
+//   - building note on/off messages (midi2NoteOn, midi1NoteOn, ...)
 //   - MIDI 1.0 <-> 2.0 protocol translation (MIDI 2.0 spec translation rules;
 //     expected values cross-checked against the ALSA kernel's output in M2)
 //   - the MIDI 1.0 byte-stream parser for non-UMP sources
@@ -216,6 +217,58 @@ bool transposeNote79(MidiMessage& m, int delta) noexcept;
 // fraction. Returns false (message unchanged) for any other message, or if the
 // pitch would leave the 7.25 range.
 bool transposePitch725(MidiMessage& m, int delta) noexcept;
+
+// ---------------------------------------------------------------------------
+// Building notes
+// ---------------------------------------------------------------------------
+
+// A MIDI 2.0 (MT 0x4) note on, 16-bit velocity. A `pitch79` other than the
+// key's own (key << 9) goes in a Pitch7_9 attribute; the key's own, or 0, means
+// no attribute (as KeyboardEDO sends a 12-EDO note). Velocity 0 is still a note
+// on in MIDI 2.0: a caller wanting a sound keeps it above 0.
+constexpr MidiMessage midi2NoteOn(std::uint8_t group, std::uint8_t channel, std::uint8_t key,
+                                  std::uint16_t velocity, std::uint16_t pitch79 = 0) noexcept {
+    const bool attribute = pitch79 != 0 && pitch79 != (std::uint16_t(key & 0x7F) << 9);
+    MidiMessage m;
+    m.words[0] = 0x40000000u | std::uint32_t(group & 0xF) << 24 | 0x9u << 20 |
+                 std::uint32_t(channel & 0xF) << 16 | std::uint32_t(key & 0x7F) << 8 |
+                 (attribute ? std::uint32_t(NoteAttribute::Pitch7_9) : 0u);
+    m.words[1] = std::uint32_t(velocity) << 16 | (attribute ? pitch79 : 0u);
+    m.wordCount = 2;
+    return m;
+}
+
+constexpr MidiMessage midi2NoteOff(std::uint8_t group, std::uint8_t channel, std::uint8_t key,
+                                   std::uint16_t velocity = 0) noexcept {
+    MidiMessage m;
+    m.words[0] = 0x40000000u | std::uint32_t(group & 0xF) << 24 | 0x8u << 20 |
+                 std::uint32_t(channel & 0xF) << 16 | std::uint32_t(key & 0x7F) << 8;
+    m.words[1] = std::uint32_t(velocity) << 16;
+    m.wordCount = 2;
+    return m;
+}
+
+// MIDI 1.0 (MT 0x2) notes, 7-bit velocity. A note on with velocity 0 would be
+// a note off, so it's sent as 1.
+constexpr MidiMessage midi1NoteOn(std::uint8_t group, std::uint8_t channel, std::uint8_t key,
+                                  std::uint8_t velocity) noexcept {
+    const std::uint32_t v = (velocity & 0x7F) == 0 ? 1u : std::uint32_t(velocity & 0x7F);
+    MidiMessage m;
+    m.words[0] = 0x20000000u | std::uint32_t(group & 0xF) << 24 | 0x90u << 16 |
+                 std::uint32_t(channel & 0xF) << 16 | std::uint32_t(key & 0x7F) << 8 | v;
+    m.wordCount = 1;
+    return m;
+}
+
+constexpr MidiMessage midi1NoteOff(std::uint8_t group, std::uint8_t channel, std::uint8_t key,
+                                   std::uint8_t velocity = 0) noexcept {
+    MidiMessage m;
+    m.words[0] = 0x20000000u | std::uint32_t(group & 0xF) << 24 | 0x80u << 16 |
+                 std::uint32_t(channel & 0xF) << 16 | std::uint32_t(key & 0x7F) << 8 |
+                 std::uint32_t(velocity & 0x7F);
+    m.wordCount = 1;
+    return m;
+}
 
 // ---------------------------------------------------------------------------
 // MIDI 1.0 bytes <-> UMP (for non-UMP sources, and for MIDI-dialect plugins)
