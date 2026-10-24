@@ -44,3 +44,5 @@ compile_commands.json
 # --- OS cruft -------------------------------------------------------------
 .DS_Store
 Thumbs.db
+# Local notes for Claude Code sessions; not part of the public repo
+CLAUDE.md
