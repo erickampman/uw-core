@@ -5,6 +5,7 @@
 #include <chrono>
 #include <cstdio>
 #include <mutex>
+#include <string>
 #include <thread>
 #include <vector>
 
@@ -185,27 +186,53 @@ void testLegacyDestination(AlsaSeqOutput& out) {
     const auto handle = out.open("uw-core legacy tests:in");
     CHECK(out.protocol(handle) == MidiProtocol::Midi1);
     CHECK(out.send(handle, &kNoteOn1, 1));   // channel 2, note 60, velocity 100
+    // Wait up to two seconds for the note-on, skipping anything else that
+    // reaches the port first (another client's subscription notice, say).
     snd_seq_event_t* event = nullptr;
-    int result = -EAGAIN;
-    for (int i = 0; i < 200 && result == -EAGAIN; ++i) {
-        result = snd_seq_event_input(legacy, &event);
-        if (result == -EAGAIN) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    for (int i = 0; i < 200 && event == nullptr; ++i) {
+        snd_seq_event_t* e = nullptr;
+        const int result = snd_seq_event_input(legacy, &e);
+        if (result >= 0 && e != nullptr && e->type == SND_SEQ_EVENT_NOTEON) event = e;
+        else if (result == -EAGAIN) std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    CHECK(result >= 0 && event != nullptr);
-    if (result >= 0 && event != nullptr) {
-        CHECK(event->type == SND_SEQ_EVENT_NOTEON);
+    CHECK(event != nullptr);
+    if (event != nullptr)
         CHECK(event->data.note.channel == 1 && event->data.note.note == 60 && event->data.note.velocity == 100);
-    }
     out.close(handle);
     snd_seq_close(legacy);
 }
 
 #if SND_LIB_VERSION >= SND_LIB_VER(1, 2, 13)   // AlsaSeqEndpoint's
+// Other UMP clients on the sequencer (PipeWire's bridge, a running MIDI 2.0
+// app) may subscribe to the test endpoint or ask about it too, which adds to
+// its inquiries. With any of them around, counts are checked as "at least";
+// alone, as exact.
+bool othersListening = false;
+
+bool otherUmpClients() {
+    snd_seq_t* seq = nullptr;
+    if (snd_seq_open(&seq, "default", SND_SEQ_OPEN_OUTPUT, 0) != 0) return false;
+    snd_seq_client_info_t* info = nullptr;
+    snd_seq_client_info_alloca(&info);
+    snd_seq_client_info_set_client(info, -1);
+    bool found = false;
+    while (snd_seq_query_next_client(seq, info) >= 0)
+        if (snd_seq_client_info_get_midi_version(info) != SND_SEQ_CLIENT_LEGACY_MIDI &&
+            std::string(snd_seq_client_info_get_name(info)).rfind("uw-core", 0) != 0)
+            found = true;
+    snd_seq_close(seq);
+    return found;
+}
+
+bool inquiriesAre(const AlsaSeqOutput& out, MidiDestinationHandle h, std::uint64_t count) {
+    return othersListening ? out.inquiries(h) >= count : out.inquiries(h) == count;
+}
+
 // Waits up to two seconds for `inquiries` to reach `count`.
 bool inquiriesReach(const AlsaSeqOutput& out, MidiDestinationHandle h, std::uint64_t count) {
     for (int i = 0; i < 200 && out.inquiries(h) < count; ++i)
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    return out.inquiries(h) == count;
+    return inquiriesAre(out, h, count);
 }
 
 // A peer of the endpoint, as another app would be: a UMP MIDI 2.0 client
@@ -262,6 +289,9 @@ void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
     // A UMP endpoint of our own, as KeyboardEDO publishes: a client of its own
     // whose info the kernel holds, a port per group of its blocks, sending to
     // their subscribers and answering a peer's discovery.
+    othersListening = otherUmpClients();
+    if (othersListening)
+        std::fprintf(stderr, "  other UMP clients present: endpoint inquiries checked as at least\n");
     const std::string kName = "uw-core test endpoint";
     ump::EndpointInfo e;
     e.name              = kName;
@@ -274,7 +304,7 @@ void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
     const auto source   = out.openEndpoint(e, MidiProtocol::Midi2);
     CHECK(source != kInvalidMidiDestination);
     CHECK(out.protocol(source) == MidiProtocol::Midi2);
-    CHECK(out.inquiries(source) == 0);
+    CHECK(inquiriesAre(out, source, 0));
     std::printf("  %s\n", out.describe(source).c_str());
     for (const auto& d : out.enumerate()) CHECK(d.id.rfind(kName + ":", 0) != 0);   // not our own
 
@@ -352,7 +382,7 @@ void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
     CHECK(out.send(source, &kNoteOn2, 1));
     got = sink.wait(1);
     CHECK(got.size() == 1 && same(got[0], kNoteOn2));
-    CHECK(out.inquiries(source) == 4);
+    CHECK(inquiriesAre(out, source, 4));
 
     in.close(group1);
     out.close(source);
