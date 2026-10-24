@@ -94,9 +94,8 @@ Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
   exist only while it runs.
 
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
-warnings in StageHand's CI (macOS 15, Apple Silicon). Nothing has run them on
-a Mac yet; [docs/macos-check.md](docs/macos-check.md) is the checklist for
-that.
+warnings in StageHand's CI (macOS 26, Apple Silicon), and were first built and
+tested on a Mac on 2026-10-08.
 
 ## Where the code came from
 
