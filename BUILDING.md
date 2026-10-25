@@ -79,3 +79,25 @@ The tests are silent:
 The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
 warnings in StageHand's CI (macOS 26, Apple Silicon), and were first built and
 tested on a Mac on 2026-10-08.
+
+## Options
+
+Pass these to the first command (`cmake -B build ... -DNAME=VALUE`).
+
+| Option | Default | Effect |
+|---|---|---|
+| `UW_CORE_UMP_ONLY` | `OFF` | Build only `uw::ump` (what the plugins use): no CLAP host, JACK or ALSA. |
+| `UW_CORE_BACKENDS` | `ON` | Build `uw::audio` and `uw::midi` (on Linux, needs JACK and ALSA). |
+| `UW_CORE_TESTS` | `ON` when built on its own | Build the tests. The projects that use uw-core turn it off. |
+
+## How this differs from the other projects
+
+Every Unlikelyware project builds the same way: `git clone`, `tools/fetch_deps.sh`, the three
+commands under "Build and test", and for a plugin `cmake --build build --target install-clap`. The
+same package list, the same `build/` folder, the same option names (`<PROJECT>_BUILD_VST3`,
+`<PROJECT>_UW_CORE_DIR` and so on). What's different here, and why:
+
+- A library, not a product: nothing to install or run. StageHand, KeyboardEDO, StruckKit, Retune and NoteGran build it from their `external/uw-core` submodule; each has a `<PROJECT>_UW_CORE_DIR` option for building against this clone instead.
+- The option prefix is `UW_CORE_`, and its options are set by the projects that use it rather than by you.
+- `test-clap-host` needs an installed CLAP instrument, and skips without one.
+- No CI of its own: StageHand's CI builds it, and the other projects' CI will (ReleaseUMP R1-3, R1-4).
