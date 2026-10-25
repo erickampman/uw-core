@@ -65,37 +65,15 @@ submodules (StageHand, Umpire, each plugin), on the Linux PC and on the Mac.
 ## Building and testing
 
 ```bash
-git submodule update --init
-cmake -S . -B build -G Ninja
-ninja -C build
+git clone https://github.com/erickampman/uw-core.git
+cd uw-core
+tools/fetch_deps.sh
+cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
+cmake --build build
 ctest --test-dir build --output-on-failure
 ```
 
-Linux needs `libjack-jackd2-dev` (or PipeWire's JACK) and `libasound2-dev`
-1.2.10 or later. The tests are silent:
-- `test-clap-host` loads an installed CLAP instrument and processes a few
-  blocks into memory. It skips if none is installed.
-- `test-backends` checks for a JACK server without starting one, and opens
-  and closes an ALSA sequencer client.
-- `test-coremidi-output` (macOS) sends UMP through `CoreMidiOutput` to a
-  `CoreMidiInput` in the same process, over a virtual source and virtual
-  destinations of both protocols, and checks the words arrive untouched.
-  It also publishes a UMP endpoint, sends discovery to its destination and
-  checks the answers on its source, before and after its function block
-  changes, and that its unique ID stays. Its endpoints exist only while it
-  runs.
-- `test-alsa-output` (Linux) does the same through `AlsaSeqOutput` and
-  `AlsaSeqInput`, and also checks a destination coming and going, a burst of
-  300 messages arriving in order without an overrun, and a legacy (pre-UMP)
-  client receiving MIDI 1.0 as ordinary sequencer events. Its endpoint test
-  reads the endpoint and block info back from the kernel, plays through a
-  group's port, has a peer client subscribe and send discovery, and changes
-  the blocks with both listeners still subscribed. Its clients and ports
-  exist only while it runs.
-
-The macOS sources (CoreAudio, CoreMIDI, CLAP bundles) build without
-warnings in StageHand's CI (macOS 26, Apple Silicon), and were first built and
-tested on a Mac on 2026-10-08.
+[BUILDING.md](BUILDING.md) has what to install first on Linux and macOS, and what each test checks.
 
 ## Where the code came from
 
