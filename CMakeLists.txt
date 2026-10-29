@@ -32,12 +32,27 @@ add_library(uw-warnings INTERFACE)
 target_compile_options(uw-warnings INTERFACE -Wall -Wextra -Wpedantic)
 
 # --- uw::ump: no dependencies, usable from C++17 plugins ------------------------
-add_library(uw-ump STATIC src/uw/ump/Ump.cpp src/uw/ump/UmpStream.cpp)
+add_library(uw-ump STATIC src/uw/ump/Ump.cpp src/uw/ump/UmpStream.cpp src/uw/ump/NoteRemap.cpp)
 add_library(uw::ump ALIAS uw-ump)
 target_include_directories(uw-ump PUBLIC src)
 target_compile_features(uw-ump PUBLIC cxx_std_17)
 set_target_properties(uw-ump PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(uw-ump PRIVATE uw-warnings)
+
+# --- uw::clap-notes: NoteRemap for CLAP note events (Retune, EDOSpread12) -----------
+# Needs only the CLAP headers. A plugin built with UW_CORE_UMP_ONLY points
+# UW_CORE_CLAP_INCLUDE_DIR at its own CLAP SDK; without the headers there's no target.
+set(UW_CORE_CLAP_INCLUDE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/external/clap/include" CACHE PATH
+    "CLAP SDK headers for uw::clap-notes")
+if(EXISTS "${UW_CORE_CLAP_INCLUDE_DIR}/clap/clap.h")
+    add_library(uw-clap-notes STATIC src/uw/clap/ClapNoteRemap.cpp)
+    add_library(uw::clap-notes ALIAS uw-clap-notes)
+    target_include_directories(uw-clap-notes PUBLIC src)
+    target_include_directories(uw-clap-notes SYSTEM PUBLIC "${UW_CORE_CLAP_INCLUDE_DIR}")
+    target_compile_features(uw-clap-notes PUBLIC cxx_std_17)
+    set_target_properties(uw-clap-notes PROPERTIES POSITION_INDEPENDENT_CODE ON)
+    target_link_libraries(uw-clap-notes PRIVATE uw-warnings)
+endif()
 
 if(NOT UW_CORE_UMP_ONLY)
     find_package(Threads REQUIRED)
@@ -112,6 +127,10 @@ if(UW_CORE_TESTS)
         add_test(NAME ${NAME} COMMAND ${NAME})
     endfunction()
     uw_add_test(test-ump tests/UmpTests.cpp uw-ump)
+    uw_add_test(test-note-remap tests/NoteRemapTests.cpp uw-ump)
+    if(TARGET uw-clap-notes)
+        uw_add_test(test-clap-note-remap tests/ClapNoteRemapTests.cpp uw-clap-notes)
+    endif()
     if(NOT UW_CORE_UMP_ONLY)
         uw_add_test(test-spsc      tests/SpscQueueTests.cpp uw-base)
         uw_add_test(test-clock     tests/ClockTests.cpp     uw-base)
