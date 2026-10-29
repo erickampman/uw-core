@@ -37,7 +37,7 @@ void testPerKeyShifts() {
     CHECK(o.size() == 1 && noteNumber(o[0]) == 62);
     o = run(r, midi1NoteOn(0, 0, 62, 100));
     CHECK(o.size() == 1 && noteNumber(o[0]) == 61);
-    o = run(r, midi1NoteOn(0, 0, 61, 100));   // no shift
+    o = run(r, midi1NoteOn(0, 4, 61, 100));   // no shift (another channel: 62 holds 61 on 0)
     CHECK(o.size() == 1 && noteNumber(o[0]) == 61);
 
     // MIDI 2.0 keeps the fraction; MIDI 1.0 rounds it (halves away from zero).
@@ -142,6 +142,42 @@ void testUnlatchedFollowsCurrentShift() {
     CHECK(o.size() == 1 && messageType(o[0]) == MessageType::Midi2ChannelVoice && noteNumber(o[0]) == 61);
 }
 
+void testSharedOutputKey() {
+    NoteRemap r;
+    int shifts[128] = {};
+    shifts[61] = -512;   // C#4 lands on C4
+    r.setShifts(shifts);
+
+    auto o = run(r, midi1NoteOn(0, 0, 60, 100));
+    CHECK(o.size() == 1 && noteNumber(o[0]) == 60);
+    // The second key ends the first key's note before sounding its own.
+    o = run(r, midi1NoteOn(0, 0, 61, 100));
+    CHECK(o.size() == 2 && isNoteOff(o[0]) && noteNumber(o[0]) == 60 && isNoteOn(o[1]) &&
+          noteNumber(o[1]) == 60);
+    // The first key's note is gone: its pressure and Note Off are dropped.
+    CHECK(run(r, polyPressure1(60, 9)).empty());
+    CHECK(run(r, midi1NoteOff(0, 0, 60)).empty());
+    o = run(r, midi1NoteOff(0, 0, 61));
+    CHECK(o.size() == 1 && isNoteOff(o[0]) && noteNumber(o[0]) == 60);
+
+    // A MIDI 2.0 note on the key is ended in MIDI 2.0, even by a MIDI 1.0 note.
+    run(r, midi2NoteOn(0, 1, 60, 0x8000));
+    o = run(r, midi1NoteOn(0, 1, 61, 100));
+    CHECK(o.size() == 2 && messageType(o[0]) == MessageType::Midi2ChannelVoice && isNoteOff(o[0]) &&
+          messageType(o[1]) == MessageType::Midi1ChannelVoice);
+
+    // Both at once: a retrigger moving off its old key onto a key another note holds.
+    shifts[62] = 0;
+    r.setShifts(shifts);
+    run(r, midi1NoteOn(0, 2, 62, 100));   // 62 on 62
+    run(r, midi1NoteOn(0, 2, 60, 100));   // 60 on 60
+    shifts[62] = -512 * 2;                // 62 now lands on 60
+    r.setShifts(shifts);
+    o = run(r, midi1NoteOn(0, 2, 62, 100));
+    CHECK(o.size() == 3 && noteNumber(o[0]) == 62 && isNoteOff(o[0]) && noteNumber(o[1]) == 60 &&
+          isNoteOff(o[1]) && noteNumber(o[2]) == 60 && isNoteOn(o[2]));
+}
+
 void testPassThrough() {
     NoteRemap r;
     r.setShift(512 * 5);
@@ -161,6 +197,7 @@ int main() {
     testOutOfRangeDropped();
     testPromotion();
     testUnlatchedFollowsCurrentShift();
+    testSharedOutputKey();
     testPassThrough();
     return uw::test::finish("note-remap");
 }

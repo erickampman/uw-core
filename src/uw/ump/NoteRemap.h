@@ -20,6 +20,9 @@
 // - A Note On whose result leaves 0..127 is dropped, with everything that follows it.
 // - A Note On for a key that's already sounding, whose result lands elsewhere (or is dropped),
 //   first ends the old note.
+// - Two input keys landing on one output key (a shift per key can do that): the second Note On
+//   first ends the note the first one is sounding there, and the first key's Note Off and per-note
+//   messages are then dropped, since its note is gone. The second key's Note Off ends the sound.
 // - All Sound Off (CC 120) and All Notes Off (CC 123) clear that channel's latches; everything else
 //   passes through unchanged.
 
@@ -34,8 +37,9 @@ namespace uw::ump {
 class NoteRemap {
 public:
     // Most messages one process() call can write: a retriggered note whose output key moved
-    // writes a Note Off for the old key before the new Note On.
-    static constexpr std::size_t kMaxOut = 2;
+    // writes a Note Off for the old key, and one for another key's note on the new key, before
+    // the new Note On.
+    static constexpr std::size_t kMaxOut = 3;
 
     NoteRemap() noexcept { reset(); }
 
@@ -59,6 +63,7 @@ private:
     struct Entry {
         Latch        state    = Latch::None;
         bool         promoted = false;   // a MIDI 1.0 note sent as MIDI 2.0
+        bool         midi2    = false;   // sent as MIDI 2.0 (promoted or not)
         std::uint8_t outKey   = 0;
         std::int16_t shift79  = 0;       // the pitch shift the Note On got, for a Pitch 7.25 value
     };
@@ -74,9 +79,10 @@ private:
     Plan   plan(const MidiMessage& m) const noexcept;
     bool   moveToKey(MidiMessage& m, int keyShift, int shift79) const noexcept;
 
-    int   shift79_[128] = {};
-    bool  promoteMidi1_ = false;
-    Entry latch_[16][16][128];   // [group][channel][input key]
+    int         shift79_[128] = {};
+    bool        promoteMidi1_ = false;
+    Entry       latch_[16][16][128];   // [group][channel][input key]
+    std::int8_t owner_[16][16][128];   // [group][channel][output key]: the input key sounding there, or -1
 };
 
 } // namespace uw::ump

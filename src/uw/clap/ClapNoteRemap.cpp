@@ -44,6 +44,8 @@ void ClapNoteRemap::setShift(int shift79) noexcept {
 void ClapNoteRemap::reset() noexcept {
     for (auto& channel : latch_)
         for (auto& e : channel) e = Entry{};
+    for (auto& channel : owner_)
+        for (auto& o : channel) o = -1;
 }
 
 void ClapNoteRemap::process(const clap_event_header_t* h, const clap_output_events_t* out) noexcept {
@@ -106,6 +108,22 @@ void ClapNoteRemap::noteOn(const clap_event_note_t& ev, const clap_output_events
         e = {Latch::Dropped, 0, 0, ev.note_id};
         return;
     }
+    // Another key sounding on this output key: end its note, and drop what follows it. (An owner
+    // whose note has since ended, or moved, is stale and ignored.)
+    std::int8_t& owner = owner_[ev.channel][outKey];
+    if (owner >= 0 && owner != ev.key) {
+        Entry& o = latch_[ev.channel][owner];
+        if (o.state == Latch::Sounding && o.outKey == outKey) {
+            clap_event_note_t off = ev;
+            off.header.type = CLAP_EVENT_NOTE_OFF;
+            off.note_id     = o.noteId;
+            off.key         = o.outKey;
+            off.velocity    = 0;
+            push(out, &off.header);
+            o = {Latch::Dropped, 0, 0, o.noteId};
+        }
+    }
+    owner = static_cast<std::int8_t>(ev.key);
     e = {Latch::Sounding, static_cast<std::uint8_t>(outKey), static_cast<std::int16_t>(fraction79),
          ev.note_id};
 

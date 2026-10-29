@@ -141,6 +141,29 @@ void testOutOfRangeDropped() {
     CHECK(c.events.empty());
 }
 
+void testSharedOutputKey() {
+    ClapNoteRemap r;
+    int shifts[128] = {};
+    shifts[61] = -512;   // C#4 lands on C4
+    r.setShifts(shifts);
+    Collector c;
+    auto on = note(CLAP_EVENT_NOTE_ON, 60, 1);
+    r.process(&on.header, &c.out);
+    c.events.clear();
+    on = note(CLAP_EVENT_NOTE_ON, 61, 2);
+    r.process(&on.header, &c.out);
+    CHECK(c.events.size() == 2 && c.events[0].type == CLAP_EVENT_NOTE_OFF && c.events[0].key == 60 &&
+          c.events[0].noteId == 1 && c.events[1].type == CLAP_EVENT_NOTE_ON && c.events[1].noteId == 2);
+
+    c.events.clear();
+    auto off = note(CLAP_EVENT_NOTE_OFF, 60, 1);
+    r.process(&off.header, &c.out);
+    CHECK(c.events.empty());
+    off = note(CLAP_EVENT_NOTE_OFF, 61, 2);
+    r.process(&off.header, &c.out);
+    CHECK(c.events.size() == 1 && c.events[0].key == 60 && c.events[0].noteId == 2);
+}
+
 } // namespace
 
 int main() {
@@ -148,5 +171,6 @@ int main() {
     testLatchAndHostTuning();
     testWildcardTuning();
     testOutOfRangeDropped();
+    testSharedOutputKey();
     return uw::test::finish("clap-note-remap");
 }

@@ -72,6 +72,9 @@ void NoteRemap::reset() noexcept {
     for (auto& g : latch_)
         for (auto& c : g)
             for (auto& e : c) e = Entry{};
+    for (auto& g : owner_)
+        for (auto& c : g)
+            for (auto& o : c) o = -1;
 }
 
 NoteRemap::Entry& NoteRemap::entry(const MidiMessage& m) noexcept {
@@ -119,28 +122,36 @@ std::size_t NoteRemap::process(const MidiMessage& in, MidiMessage* out) noexcept
         } else {
             inRange = transposeNote(m, p.keyShift);
         }
+        const std::uint8_t g = group(in), c = channel(in), key = noteNumber(in);
+        // A Note Off for the note input key `k` is sounding, in the dialect it was sent in.
+        auto endNote = [&](int k) {
+            const Entry& old = latch_[g][c][k];
+            out[n++] = old.midi2 ? midi2NoteOff(g, c, old.outKey) : midi1NoteOff(g, c, old.outKey);
+            if (owner_[g][c][old.outKey] == k) owner_[g][c][old.outKey] = -1;
+        };
         if (e.state == Latch::Sounding &&
             (!inRange || e.outKey != noteNumber(m) || e.promoted != p.promoted)) {
             // Retriggered while sounding, and the new note won't land on the old one: end the old
             // one first so it can't hang.
-            MidiMessage off;
-            if (e.promoted) {
-                off = midi2NoteOff(group(in), channel(in), e.outKey);
-            } else {
-                off = in;
-                off.words[0] = (off.words[0] & 0xFF0F00FFu) |
-                               (static_cast<std::uint32_t>(Status::NoteOff) << 20) |
-                               (static_cast<std::uint32_t>(e.outKey) << 8);
-                off.words[0] &= ~0xFFu;   // MIDI 1.0: velocity 0; MIDI 2.0: no attribute
-                off.words[1] = 0;
-            }
-            out[n++] = off;
+            endNote(key);
         }
         if (!inRange) {
-            e = {Latch::Dropped, false, 0, 0};
+            e = {Latch::Dropped, false, false, 0, 0};
             return n;
         }
-        e = {Latch::Sounding, p.promoted, noteNumber(m), static_cast<std::int16_t>(p.shift79)};
+        const std::uint8_t outKey = noteNumber(m);
+        const std::int8_t  other  = owner_[g][c][outKey];
+        if (other >= 0 && other != key) {
+            // Another key is sounding on this output key: end its note, and drop what follows it.
+            Entry& o = latch_[g][c][other];
+            if (o.state == Latch::Sounding && o.outKey == outKey) {
+                endNote(other);
+                o = {Latch::Dropped, false, false, 0, 0};
+            }
+        }
+        owner_[g][c][outKey] = static_cast<std::int8_t>(key);
+        e = {Latch::Sounding, p.promoted, messageType(m) == MessageType::Midi2ChannelVoice, outKey,
+             static_cast<std::int16_t>(p.shift79)};
         out[n++] = m;
         return n;
     }
@@ -167,14 +178,20 @@ std::size_t NoteRemap::process(const MidiMessage& in, MidiMessage* out) noexcept
                 break;
             }
         }
-        if (isNoteOff(in)) e = Entry{};
+        if (isNoteOff(in)) {
+            if (e.state == Latch::Sounding && owner_[group(in)][channel(in)][e.outKey] == noteNumber(in))
+                owner_[group(in)][channel(in)][e.outKey] = -1;
+            e = Entry{};
+        }
         if (!keep) return 0;
         out[0] = m;
         return 1;
     }
 
-    if (isAllNotesOff(in))
+    if (isAllNotesOff(in)) {
         for (auto& e : latch_[group(in)][channel(in)]) e = Entry{};
+        for (auto& o : owner_[group(in)][channel(in)]) o = -1;
+    }
     out[0] = in;
     return 1;
 }

@@ -13,6 +13,8 @@
 // expression follow the latched key, found by note_id when the event has one. A host's own tuning
 // expression on a moved note gets the note's fraction added. Events with no latched note follow
 // the current shift. A Note On whose key leaves 0..127 is dropped, with everything that follows it.
+// Two input keys landing on one output key: the second Note On first ends the first one's note,
+// whose Note Off and expressions are then dropped (as NoteRemap).
 // A wildcard event (key and note_id both -1) passes through, since it matches every output key
 // anyway.
 //
@@ -58,10 +60,11 @@ private:
     template <typename F>
     int forEachMatch(int channel, int key, std::int32_t noteId, F&& f) noexcept;
 
-    int   keyShift_[128]   = {};   // each key's shift, rounded to whole semitones
-    int   fraction79_[128] = {};   // what's left of it, in 1/512 semitone
-    int   uniformFraction79_ = 0;  // the fraction every key shares, or 0, for a wildcard expression
-    Entry latch_[16][128];         // [channel][input key]
+    int         keyShift_[128]     = {};   // each key's shift, rounded to whole semitones
+    int         fraction79_[128]   = {};   // what's left of it, in 1/512 semitone
+    int         uniformFraction79_ = 0;    // the fraction every key shares, or 0, for a wildcard expression
+    Entry       latch_[16][128];   // [channel][input key]
+    std::int8_t owner_[16][128];   // [channel][output key]: the input key last sounding there, or -1
 };
 
 } // namespace uw
