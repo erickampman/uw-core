@@ -20,6 +20,7 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::base` | the shared clock, SPSC queue, denormal control, audio buffers, transport time, events | `uw::ump`; C++20 | the apps |
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
+| `uw::editor-window` | `EditorWindow`: a top-level window hosting one plugin's editor (X11 on Linux, Cocoa on macOS) | `uw::plugin`; libX11 (Linux) or AppKit (macOS) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
 | `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS); a published source can be a UMP endpoint with function blocks (`openEndpoint`: CoreMIDI, macOS 15+, in `CoreMidiEndpoint.mm`, uw-core's one Objective-C++ file; the ALSA sequencer, alsa-lib 1.2.13+, a client of its own, in `AlsaSeqEndpoint`) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
@@ -32,7 +33,7 @@ Add it as a git submodule and pin a commit:
 
 ```cmake
 add_subdirectory(external/uw-core)
-target_link_libraries(my-app PRIVATE uw::clap-host uw::audio uw::midi)
+target_link_libraries(my-app PRIVATE uw::clap-host uw::editor-window uw::audio uw::midi)
 ```
 
 A plugin that needs only the UMP layer, without CLAP, JACK or ALSA:
@@ -83,8 +84,10 @@ Copied on 2026-10-07 from StageHand at `0c7edc5` (branch
 time and event headers), `src/Plugin`, `src/Audio`, `src/Midi`, and the tests
 `UmpTests`, `SpscQueueTests`, `ClockTests`, `DenormalTests`. StageHand's own
 model (`Sequence`, `MidiFilter`, `MidiSourceRef`), engine, session and UI
-stayed in StageHand. Its plugin editor windows (`App/EditorWindow*`) come
-later (Umpire's roadmap, milestone 10).
+stayed in StageHand. Its plugin editor windows (`App/EditorWindow*`) moved
+here on 2026-10-30 (Umpire's milestone 11, below), decoupled from
+`stagehand::MainLoop`; StageHand itself still has its own copy (switching it
+to this one is separate work in StageHand's own repo).
 
 Comments that cite `docs/...` mean StageHand's docs; milestone numbers in
 comments ("measured in M2") are StageHand's.
@@ -162,3 +165,12 @@ For StageHand's switch to uw-core:
   with each call so it can't drift; each opened handle tags its events, and
   cancelling removes by tag. Elsewhere (CoreMIDI, for now) `sendAt` sends at
   once and `schedules` is false, so a caller sends on time itself.
+- `uw::editor-window` (2026-10-30, Umpire's milestone 11): `EditorWindow`
+  moved from StageHand's `App/EditorWindow.{h,cpp}` (X11) and
+  `App/EditorWindowMac.{h,mm}` (Cocoa), merged into one header with the two
+  platforms' implementation files (as `MainLoop.h` already splits by
+  `#ifdef __APPLE__`). Decoupled from `stagehand::MainLoop`: takes a
+  `HostServices&` instead (Linux's X11 connection fd-watch only; Cocoa needs
+  none), and a `std::function<void()> requestQuit` instead of
+  `MainLoop::requestQuit()`, so any app's own main loop can provide both
+  without uw-core knowing its type.

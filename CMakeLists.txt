@@ -9,6 +9,7 @@ project(uw-core VERSION 0.1.0 LANGUAGES CXX)
 #   uw::base       clock, SPSC queue, denormals, audio buffers, events
 #   uw::plugin     the plugin seam (interfaces only)
 #   uw::clap-host  the plugin seam's CLAP implementation
+#   uw::editor-window  a window hosting a plugin's editor (X11 / Cocoa)
 #   uw::audio      JACK (Linux) / CoreAudio (macOS)
 #   uw::midi       ALSA sequencer UMP (Linux) / CoreMIDI (macOS) input and output
 
@@ -83,6 +84,24 @@ if(NOT UW_CORE_UMP_ONLY)
         PRIVATE uw-warnings)
     if(APPLE)
         target_link_libraries(uw-clap-host PUBLIC "-framework CoreFoundation")   # CFBundle loads .clap bundles
+    endif()
+
+    # --- uw::editor-window: a top-level window hosting a plugin's editor --------
+    # (X11 on Linux, Cocoa on macOS). Moved from StageHand (App/EditorWindow*;
+    # Umpire's docs/plugins.md, milestone 11).
+    add_library(uw-editor-window STATIC)
+    add_library(uw::editor-window ALIAS uw-editor-window)
+    target_link_libraries(uw-editor-window PUBLIC uw-plugin PRIVATE uw-warnings)
+    if(APPLE)
+        enable_language(OBJCXX)
+        target_sources(uw-editor-window PRIVATE src/uw/plugin/EditorWindowMac.mm)
+        set_source_files_properties(src/uw/plugin/EditorWindowMac.mm PROPERTIES COMPILE_OPTIONS "-fobjc-arc")
+        target_link_libraries(uw-editor-window PUBLIC "-framework AppKit")
+    else()
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(UW_X11 REQUIRED IMPORTED_TARGET x11)   # plugin editor windows
+        target_sources(uw-editor-window PRIVATE src/uw/plugin/EditorWindow.cpp)
+        target_link_libraries(uw-editor-window PUBLIC PkgConfig::UW_X11)
     endif()
 endif()
 

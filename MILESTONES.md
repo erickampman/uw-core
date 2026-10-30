@@ -32,5 +32,9 @@
 - [x] `MidiOutput::sendAt`, `schedules`, `cancelScheduled`; `AlsaSeqOutput`'s on a sequencer queue, tagged per handle
 - [ ] `CoreMidiOutput`'s: timestamps on its event lists, `MIDIFlushOutput` to cancel (destinations; a virtual source's receivers get the timestamps and may ignore them)
 
-## M7: Later
-- [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)
+## M7: Plugin editor windows (Umpire's milestone 11)
+- [x] `EditorWindow` moved here from StageHand (`App/EditorWindow*`): a top-level
+  window hosting one plugin's editor, X11 on Linux, Cocoa on macOS. Decoupled
+  from `stagehand::MainLoop`: takes a `HostServices&` for the X11 connection's
+  fd watch (Linux only; Cocoa drives its own), and a `requestQuit` callback
+  for Ctrl/Cmd-Q, instead of a concrete app's main loop.
