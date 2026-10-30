@@ -35,9 +35,9 @@ struct MidiDestinationInfo {
 // different note number, not a dropped attribute). Protocol-neutral messages
 // (utility, system, SysEx7) go to either.
 //
-// Lifecycle: open() destinations or openVirtual() sources -> send() ->
-// close(). Everything, send() included, is called on one thread (the app's
-// main thread); send() doesn't block.
+// Lifecycle: open() destinations or openVirtual() sources -> send() (or
+// sendAt()) -> close(). Everything, send() included, is called on one thread
+// (the app's main thread); send() doesn't block.
 class MidiOutput {
 public:
     virtual ~MidiOutput() = default;
@@ -106,6 +106,26 @@ public:
     // open or the platform refused them.
     virtual bool send(MidiDestinationHandle destination, const MidiMessage* messages,
                       std::size_t count) = 0;
+
+    // Send `count` messages, in order, at `when` on uw-core's clock
+    // (nowNanoseconds()), held by the platform until then, so their timing
+    // doesn't hang on how often the caller's loop runs (Umpire's playback
+    // sends a little ahead). A time already past sends now. Only where
+    // schedules(destination) is true; elsewhere this is send(), now.
+    virtual bool sendAt(MidiDestinationHandle destination, const MidiMessage* messages, std::size_t count,
+                        Nanoseconds when) {
+        (void)when;
+        return send(destination, messages, count);
+    }
+    // Whether sendAt() holds messages until their time for `destination`.
+    virtual bool schedules(MidiDestinationHandle destination) const {
+        (void)destination;
+        return false;
+    }
+    // Drop what sendAt() holds for `destination` and hasn't sent yet (a stop,
+    // a locate), and nothing sent through another handle, even to the same
+    // place: open() a destination once per stream that's cancelled on its own.
+    virtual void cancelScheduled(MidiDestinationHandle destination) { (void)destination; }
 
     // Hotplug, as MidiInput: changes() goes up when the system announces a
     // destination appearing or leaving, and sync() reconnects an opened one if

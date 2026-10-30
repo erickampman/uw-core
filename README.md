@@ -153,3 +153,12 @@ For StageHand's switch to uw-core:
   port (`snd_seq_port_info_get_ump_is_midi1`): before 1.2.13 such a port is
   taken as MIDI 2.0. That call broke StageHand's Linux CI from 2026-10-12;
   uw-core's ALSA code now builds against 1.2.11's headers.
+- Scheduled output (2026-10-29, Umpire's milestone 7, playback):
+  `MidiOutput::sendAt(handle, messages, count, when)` sends at a time on
+  `nowNanoseconds()`'s clock, `schedules(handle)` says whether the platform
+  holds them until then, and `cancelScheduled(handle)` drops what's held for
+  one handle (a stop, a locate). `AlsaSeqOutput` schedules on a sequencer
+  queue of each sending client's own, in real time, reading the queue's time
+  with each call so it can't drift; each opened handle tags its events, and
+  cancelling removes by tag. Elsewhere (CoreMIDI, for now) `sendAt` sends at
+  once and `schedules` is false, so a caller sends on time itself.

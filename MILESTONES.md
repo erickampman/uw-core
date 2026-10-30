@@ -28,5 +28,9 @@
 ## M5: Parameters for a host's own controls (StageHand's generic editor)
 - [x] `ParameterInfo`: hidden, read-only and module from CLAP; `HostedPlugin::paramValueText` (CLAP `value_to_text`)
 
-## M6: Later
+## M6: Scheduled output (Umpire's milestone 7, playback)
+- [x] `MidiOutput::sendAt`, `schedules`, `cancelScheduled`; `AlsaSeqOutput`'s on a sequencer queue, tagged per handle
+- [ ] `CoreMidiOutput`'s: timestamps on its event lists, `MIDIFlushOutput` to cancel (destinations; a virtual source's receivers get the timestamps and may ignore them)
+
+## M7: Later
 - [ ] Plugin editor windows moved here from StageHand (Umpire roadmap M3, milestone 10)

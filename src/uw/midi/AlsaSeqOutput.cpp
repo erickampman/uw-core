@@ -1,6 +1,7 @@
 #include "uw/midi/AlsaSeqOutput.h"
 
 #include "uw/midi/AlsaSeqEndpoint.h"
+#include "uw/base/Clock.h"
 
 #include <alsa/asoundlib.h>
 #include <poll.h>
@@ -122,6 +123,7 @@ MidiDestinationHandle AlsaSeqOutput::open(const std::string& destinationId) {
     o.destClient  = found.client;
     o.destPort    = found.port;
     if (o.port < 0) return kInvalidMidiDestination;
+    o.tag = freeTag();
     const MidiDestinationHandle handle = nextHandle++;
     opened[handle] = std::move(o);
     return handle;
@@ -142,6 +144,7 @@ MidiDestinationHandle AlsaSeqOutput::openVirtual(const std::string& portName, Mi
         std::fprintf(stderr, "AlsaSeqOutput: cannot create port '%s'\n", portName.c_str());
         return kInvalidMidiDestination;
     }
+    o.tag = freeTag();
     const MidiDestinationHandle handle = nextHandle++;
     opened[handle] = std::move(o);
     return handle;
@@ -157,6 +160,7 @@ MidiDestinationHandle AlsaSeqOutput::openEndpoint(const ump::EndpointInfo& endpo
     if (!o.ump) return openVirtual(endpoint.name, protocol, persistentId);
     o.port = AlsaSeqEndpoint::port();
     snd_seq_set_client_pool_output(o.ump->sequencer(), kOutputPool);   // the default if refused
+    o.tag = freeTag();
     const MidiDestinationHandle handle = nextHandle++;
     opened[handle] = std::move(o);
     return handle;
@@ -178,8 +182,11 @@ std::uint64_t AlsaSeqOutput::inquiries(MidiDestinationHandle destination) const 
 void AlsaSeqOutput::close(MidiDestinationHandle destination) {
     const auto it = opened.find(destination);
     if (it == opened.end()) return;
-    if (it->second.ump)
-        it->second.ump.reset();   // its client goes, ports and all
+    cancelScheduled(destination);
+    if (it->second.ump) {
+        queues.erase(it->second.ump->sequencer());
+        it->second.ump.reset();   // its client goes, ports, queue and all
+    }
     else if (it->second.isVirtual)
         snd_seq_delete_simple_port(seq[it->second.clientIndex], it->second.port);
     opened.erase(it);
@@ -192,10 +199,51 @@ MidiProtocol AlsaSeqOutput::protocol(MidiDestinationHandle destination) const {
 
 bool AlsaSeqOutput::send(MidiDestinationHandle destination, const MidiMessage* messages, std::size_t count) {
     const auto it = opened.find(destination);
+    return it != opened.end() && write(it->second, messages, count, -1, 0);
+}
+
+bool AlsaSeqOutput::sendAt(MidiDestinationHandle destination, const MidiMessage* messages, std::size_t count,
+                           Nanoseconds when) {
+    const auto it = opened.find(destination);
     if (it == opened.end()) return false;
     const Opened& o = it->second;
+    const int queue = queueFor(sequencerOf(o));
+    if (queue < 0) return write(o, messages, count, -1, 0);   // can't schedule: now
+
+    // The queue's time now, and ours, read together: `when` is as far ahead
+    // on the queue's.
+    snd_seq_queue_status_t* status = nullptr;
+    snd_seq_queue_status_alloca(&status);
+    if (snd_seq_get_queue_status(sequencerOf(o), queue, status) < 0) return write(o, messages, count, -1, 0);
+    const Nanoseconds          now   = nowNanoseconds();
+    const snd_seq_real_time_t* clock = snd_seq_queue_status_get_real_time(status);
+    if (when <= now) return write(o, messages, count, -1, 0);
+    const std::int64_t at = static_cast<std::int64_t>(clock->tv_sec) * 1'000'000'000 + clock->tv_nsec + (when - now);
+    return write(o, messages, count, queue, at);
+}
+
+bool AlsaSeqOutput::schedules(MidiDestinationHandle destination) const {
+    return opened.count(destination) != 0;
+}
+
+void AlsaSeqOutput::cancelScheduled(MidiDestinationHandle destination) {
+    const auto it = opened.find(destination);
+    if (it == opened.end() || it->second.tag == 0) return;
+    snd_seq_t* const s = sequencerOf(it->second);
+    if (queues.count(s) == 0) return;   // nothing was ever scheduled from it
+    snd_seq_remove_events_t* remove = nullptr;
+    snd_seq_remove_events_alloca(&remove);
+    snd_seq_remove_events_set_condition(remove, SND_SEQ_REMOVE_OUTPUT | SND_SEQ_REMOVE_TAG_MATCH);
+    snd_seq_remove_events_set_tag(remove, it->second.tag);
+    snd_seq_remove_events(s, remove);
+}
+
+// Each message is an event from `o`'s port, direct, or with `queue` at
+// `queueNanoseconds` on it; buffered, then written together.
+bool AlsaSeqOutput::write(const Opened& o, const MidiMessage* messages, std::size_t count, int queue,
+                          std::int64_t queueNanoseconds) {
     if (!o.isVirtual && o.destClient < 0) return false;
-    snd_seq_t* const s = o.ump ? o.ump->sequencer() : seq[o.clientIndex];
+    snd_seq_t* const s = sequencerOf(o);
 
     // Writes what's buffered. A full pool (-EAGAIN: receivers behind on
     // reading) gets a short wait for room; anything else, a destination gone
@@ -220,7 +268,9 @@ bool AlsaSeqOutput::send(MidiDestinationHandle destination, const MidiMessage* m
         }
     };
 
-    // Each message is its own direct event, buffered, then written together.
+    snd_seq_real_time_t at{};
+    at.tv_sec  = static_cast<unsigned>(queueNanoseconds / 1'000'000'000);
+    at.tv_nsec = static_cast<unsigned>(queueNanoseconds % 1'000'000'000);
     for (std::size_t i = 0; i < count; ++i) {
         const MidiMessage& m = messages[i];
         if (m.wordCount == 0 || m.wordCount > 4) continue;
@@ -232,7 +282,12 @@ bool AlsaSeqOutput::send(MidiDestinationHandle destination, const MidiMessage* m
             snd_seq_ev_set_subs(&event);
         else
             snd_seq_ev_set_dest(&event, o.destClient, o.destPort);
-        snd_seq_ev_set_direct(&event);
+        if (queue < 0) {
+            snd_seq_ev_set_direct(&event);
+        } else {
+            snd_seq_ev_schedule_real(&event, queue, 0, &at);
+            snd_seq_ev_set_tag(&event, o.tag);
+        }
 
         int result = snd_seq_ump_event_output_buffer(s, &event);
         if (result == -EAGAIN) {   // the buffer is full: write it out and try again
@@ -355,6 +410,35 @@ bool AlsaSeqOutput::findDestination(const std::string& id, Destination& found) c
         }
     }
     return false;
+}
+
+// A tag no opened handle has, or 0 if all 255 are taken.
+std::uint8_t AlsaSeqOutput::freeTag() const {
+    for (int tag = 1; tag <= 255; ++tag) {
+        bool taken = false;
+        for (const auto& [handle, o] : opened) taken = taken || o.tag == tag;
+        if (!taken) return static_cast<std::uint8_t>(tag);
+    }
+    return 0;
+}
+
+// The sequencer client `o` sends from.
+snd_seq_t* AlsaSeqOutput::sequencerOf(const Opened& o) const {
+    return o.ump ? o.ump->sequencer() : seq[o.clientIndex];
+}
+
+// The queue sendAt() schedules on from client `s`, made and started the first
+// time it's needed; -1 if the sequencer refused.
+int AlsaSeqOutput::queueFor(snd_seq_t* s) {
+    if (const auto it = queues.find(s); it != queues.end()) return it->second;
+    const int queue = snd_seq_alloc_named_queue(s, "uw-core sendAt");
+    if (queue < 0 || snd_seq_start_queue(s, queue, nullptr) < 0 || snd_seq_drain_output(s) < 0) {
+        std::fprintf(stderr, "AlsaSeqOutput: no sequencer queue to schedule on; sending at once\n");
+        if (queue >= 0) snd_seq_free_queue(s, queue);
+        return -1;
+    }
+    queues[s] = queue;
+    return queue;
 }
 
 // The client's private port that open() destinations are sent from, made the

@@ -13,6 +13,7 @@
 
 #include "Check.h"
 #include "uw/midi/AlsaSeqInput.h"
+#include "uw/base/Clock.h"
 #include "uw/midi/AlsaSeqOutput.h"
 #include "uw/ump/UmpStream.h"
 
@@ -23,10 +24,18 @@ namespace {
 struct Collector final : MidiSink {
     std::mutex               lock;
     std::vector<MidiMessage> received;
+    std::vector<Nanoseconds> times;   // each one's capture time, until clear()
 
     void onMidi(MidiSourceHandle, const TimedMidiMessage& m) noexcept override {
         std::lock_guard<std::mutex> g(lock);
         received.push_back(m.message);
+        times.push_back(m.captureTime);
+    }
+    std::vector<Nanoseconds> takeTimes() {
+        std::lock_guard<std::mutex> g(lock);
+        auto out = times;
+        times.clear();
+        return out;
     }
     // Waits up to two seconds for `count` messages.
     std::vector<MidiMessage> wait(std::size_t count) {
@@ -160,6 +169,55 @@ void testManyMessages(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
     for (std::size_t i = 0; inOrder && i < got.size(); ++i) inOrder = same(got[i], sent[i]);
     CHECK(inOrder);
     CHECK(in.overrunCount() == 0);   // AlsaSeqInput's input pool holds a burst
+    out.close(handle);
+    in.close(input);
+}
+
+void testScheduled(AlsaSeqOutput& out, AlsaSeqInput& in, Collector& sink) {
+    // sendAt(): held by the kernel's queue until its time, in order; a time
+    // past is now; cancelScheduled() drops only its own handle's.
+    const auto input = in.openVirtual("uw-core test scheduled", MidiProtocol::Midi2);
+    const std::string id = "uw-core input tests MIDI 2.0:uw-core test scheduled";
+    const auto handle = out.open(id);
+    const auto other  = out.open(id);   // the same place, cancelled on its own
+    CHECK(handle != kInvalidMidiDestination && other != kInvalidMidiDestination);
+    CHECK(out.schedules(handle));
+    sink.wait(0);
+    sink.takeTimes();
+
+    const MidiMessage later = message(0x40911100 | 61 << 8, 0x80000000, 2);
+    const MidiMessage first = message(0x40911100 | 62 << 8, 0x80000000, 2);
+    const Nanoseconds now   = nowNanoseconds();
+    CHECK(out.sendAt(handle, &later, 1, now + 150'000'000));
+    CHECK(out.sendAt(handle, &first, 1, now + 50'000'000));
+    CHECK(out.sendAt(handle, &kNoteOn2, 1, now - 1'000'000));   // past: now
+    auto got   = sink.wait(3);
+    auto times = sink.takeTimes();
+    CHECK(got.size() == 3 && times.size() == 3);
+    if (got.size() == 3 && times.size() == 3) {
+        CHECK(same(got[0], kNoteOn2) && same(got[1], first) && same(got[2], later));
+        const auto off = [&](std::size_t i, Nanoseconds want) { return (times[i] - now - want) / 1'000'000; };
+        std::printf("  scheduled: arrived %+lld ms and %+lld ms from their times\n",
+                    static_cast<long long>(off(1, 50'000'000)), static_cast<long long>(off(2, 150'000'000)));
+        CHECK(times[0] - now < 40'000'000);
+        CHECK(off(1, 50'000'000) >= -1 && off(1, 50'000'000) < 15);   // the capture thread's wake-up, on a busy machine
+        CHECK(off(2, 150'000'000) >= -1 && off(2, 150'000'000) < 15);
+    }
+
+    // Cancelled: nothing of `handle`'s arrives; `other`'s does.
+    const Nanoseconds then = nowNanoseconds();
+    CHECK(out.sendAt(handle, &later, 1, then + 100'000'000));
+    CHECK(out.sendAt(other, &first, 1, then + 150'000'000));
+    out.cancelScheduled(handle);
+    out.cancelScheduled(handle);   // twice: nothing left
+    got = sink.wait(2);
+    CHECK(got.size() == 1 && same(got[0], first));
+    sink.takeTimes();
+
+    // Closing cancels too.
+    CHECK(out.sendAt(other, &later, 1, nowNanoseconds() + 100'000'000));
+    out.close(other);
+    CHECK(sink.wait(1).empty());
     out.close(handle);
     in.close(input);
 }
@@ -420,6 +478,7 @@ int main() {
     testDestination(*out, *in, sink, MidiProtocol::Midi2, "uw-core test input 2.0", kNoteOn2);
     testDestination(*out, *in, sink, MidiProtocol::Midi1, "uw-core test input 1.0", kNoteOn1);
     testManyMessages(*out, *in, sink);
+    testScheduled(*out, *in, sink);
     testLegacyDestination(*out);
     testEndpoint(*out, *in, sink);
 

@@ -42,6 +42,12 @@ class AlsaSeqEndpoint;
 // Ids have AlsaSeqInput's shape, "<client name>:<port name>", or a numeric
 // address ("128:0").
 //
+// sendAt() schedules on a sequencer queue of the sending client's own (made
+// the first time it's needed), in real time, so the kernel delivers each
+// message on time; the queue's time is read with each call, so it can't drift
+// from nowNanoseconds(). Every opened handle tags its events with a number of
+// its own, which cancelScheduled() removes them by.
+//
 // Hotplug: a private port hears the system's announcements, read when
 // changes() is called; there's no thread, as everything here is main-thread.
 class AlsaSeqOutput final : public MidiOutput {
@@ -67,6 +73,10 @@ public:
     MidiProtocol                     protocol(MidiDestinationHandle destination) const override;
     bool                             send(MidiDestinationHandle destination, const MidiMessage* messages,
                                           std::size_t count) override;
+    bool                             sendAt(MidiDestinationHandle destination, const MidiMessage* messages,
+                                            std::size_t count, Nanoseconds when) override;
+    bool                             schedules(MidiDestinationHandle destination) const override;
+    void                             cancelScheduled(MidiDestinationHandle destination) override;
     std::uint64_t                    changes() const override;
     bool                             sync(MidiDestinationHandle destination) override;
     const char*                      name() const override { return "ALSA sequencer"; }
@@ -93,6 +103,7 @@ private:
         int          destClient  = -1;         // the destination now; -1 if gone
         int          destPort    = -1;
         std::unique_ptr<AlsaSeqEndpoint> ump;   // an openEndpoint() source: its own client, port 0
+        std::uint8_t tag         = 0;          // on its scheduled events, for cancelScheduled(); 0: none free
     };
 
     AlsaSeqOutput() = default;
@@ -101,6 +112,11 @@ private:
     bool                     findDestination(const std::string& id, Destination& found) const;
     bool                     ownsEndpoint(int client) const;
     int                      senderPort(int clientIndex);
+    std::uint8_t             freeTag() const;
+    int                      queueFor(snd_seq_t* s);
+    snd_seq_t*               sequencerOf(const Opened& o) const;
+    bool                     write(const Opened& o, const MidiMessage* messages, std::size_t count, int queue,
+                                   std::int64_t queueNanoseconds);
     static int               clientFor(MidiProtocol protocol) {
         return protocol == MidiProtocol::Midi2 ? kMidi2Client : kMidi1Client;
     }
@@ -112,6 +128,7 @@ private:
     bool        followsAnnouncements   = false;
 
     std::map<MidiDestinationHandle, Opened> opened;   // main thread only
+    std::map<snd_seq_t*, int>               queues;   // sendAt()'s, by the client that owns it
     MidiDestinationHandle                   nextHandle = 1;
 
     mutable std::uint64_t announced = 0;   // announcements read so far: changes()
