@@ -59,7 +59,8 @@ The tests are silent:
 - `test-clap-host` loads an installed CLAP instrument and processes a few
   blocks into memory. It skips if none is installed.
 - `test-backends` checks for a JACK server without starting one, and opens
-  and closes an ALSA sequencer client.
+  and closes an ALSA sequencer client. It skips if there's no ALSA sequencer
+  (`/dev/snd/seq`), as does `test-alsa-output`.
 - `test-coremidi-output` (macOS) sends UMP through `CoreMidiOutput` to a
   `CoreMidiInput` in the same process, over a virtual source and virtual
   destinations of both protocols, and checks the words arrive untouched.
@@ -100,4 +101,4 @@ same package list, the same `build/` folder, the same option names (`<PROJECT>_B
 - A library, not a product: nothing to install or run. StageHand, KeyboardEDO, StruckKit, Retune and NoteGran build it from their `external/uw-core` submodule; each has a `<PROJECT>_UW_CORE_DIR` option for building against this clone instead.
 - The option prefix is `UW_CORE_`, and its options are set by the projects that use it rather than by you.
 - `test-clap-host` needs an installed CLAP instrument, and skips without one.
-- No CI of its own: StageHand's CI builds it, and the other projects' CI will (ReleaseUMP R1-3, R1-4).
+- CI (`.github/workflows/ci.yml`) runs on `ubuntu-24.04`, the oldest Ubuntu supported, not `ubuntu-latest`, and on `macos-26`. GitHub's Linux runners have no ALSA sequencer (`/dev/snd/seq`), so `test-backends` and `test-alsa-output` are skipped there (exit code 77); they run wherever the `snd-seq` module is loaded.
