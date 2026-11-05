@@ -7,6 +7,7 @@
 #include <mutex>
 #include <string>
 #include <thread>
+#include <unistd.h>
 #include <vector>
 
 #include <alsa/asoundlib.h>
@@ -464,6 +465,10 @@ void testEndpoint(AlsaSeqOutput& out, AlsaSeqInput&, Collector&) {
 } // namespace
 
 int main() {
+    if (access("/dev/snd/seq", F_OK) != 0) {   // no snd-seq module (CI runners): skip, don't fail
+        std::printf("alsa-output: skipped, no ALSA sequencer (/dev/snd/seq)\n");
+        return 77;                              // SKIP_RETURN_CODE in CMakeLists.txt
+    }
     auto out = AlsaSeqOutput::create("uw-core output tests");
     auto in  = AlsaSeqInput::create("uw-core input tests");
     CHECK(out != nullptr);   // needs /dev/snd/seq (the snd-seq module) and UMP support

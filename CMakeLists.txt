@@ -158,6 +158,8 @@ if(UW_CORE_TESTS)
         if(UW_CORE_BACKENDS AND NOT APPLE)
             uw_add_test(test-backends tests/BackendTests.cpp "uw-audio;uw-midi")
             uw_add_test(test-alsa-output tests/AlsaSeqOutputTests.cpp uw-midi)
+            # 77: no ALSA sequencer on this machine (/dev/snd/seq), as on GitHub's runners
+            set_tests_properties(test-backends test-alsa-output PROPERTIES SKIP_RETURN_CODE 77)
         endif()
         if(UW_CORE_BACKENDS AND APPLE)
             uw_add_test(test-coremidi-output tests/CoreMidiOutputTests.cpp uw-midi)
