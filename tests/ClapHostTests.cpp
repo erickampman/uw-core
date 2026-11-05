@@ -125,9 +125,11 @@ void noteEffect() {
                                     [](const uw::Event& e) { return e.type == uw::EventType::Midi; });
     CHECK(midi >= 1);
     if (it->name == "Retune") {   // its parameters, with the plugin's own value text
+        // Retune appends parameters and never moves them (Dry came fourth), so only the first
+        // three are fixed.
         const auto params = plugin->parameters();
-        CHECK(params.size() == 3 && params[0].name == "Divisions" && params[0].isStepped && !params[0].isHidden &&
-              !params[0].isReadOnly);
+        CHECK(params.size() >= 3 && params[0].name == "Divisions" && params[1].name == "Octaves" &&
+              params[2].name == "Steps" && params[0].isStepped && !params[0].isHidden && !params[0].isReadOnly);
         std::string text;
         CHECK(plugin->paramValueText(0, 31.0, text) && text == "31");
     }
