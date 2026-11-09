@@ -99,6 +99,19 @@ public:
 
     // The main device (valid after open()).
     const AudioDeviceInfo& device() const noexcept { return main; }
+
+    // The rates the main device offers (ascending; a continuous range gives
+    // the common rates inside it), and the buffer sizes this process may ask
+    // for on it, in frames. Main thread, after open().
+    std::vector<double> sampleRates() const;
+    bool                bufferSizeRange(std::uint32_t& minimum, std::uint32_t& maximum) const;
+
+    // This process's buffer on the device, now, while playing (clamped to
+    // bufferSizeRange()); close() puts back what was there before. The
+    // plugins need nothing: a block is never longer than the buffer, and the
+    // engine takes any length up to its maximum. Returns the frames it runs
+    // at, or 0 if it isn't open. Main thread.
+    std::uint32_t setBufferSize(std::uint32_t frames);
     // open() fell back to the default: the choice wasn't there (and is waited for).
     bool usingFallback() const noexcept { return !pendingChoice.empty(); }
 

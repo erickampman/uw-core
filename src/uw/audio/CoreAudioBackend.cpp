@@ -201,10 +201,22 @@ bool CoreAudioBackend::open(const AudioConfig& requested, AudioConfig& negotiate
     // The device keeps its rate unless one is asked for; from here on, the rate
     // it runs at is the one we hold to (the plugins are prepared for it).
     wanted = requested;
-    if (requested.sampleRate > 0.0 && requested.sampleRate != main.sampleRate &&
-        !setProperty(main.id, kAudioDevicePropertyNominalSampleRate, Float64{requested.sampleRate}))
-        std::fprintf(stderr, "CoreAudioBackend: '%s' won't run at %.0f Hz\n", main.name.c_str(), requested.sampleRate);
     Float64 rate = 0.0;
+    if (requested.sampleRate > 0.0 && requested.sampleRate != main.sampleRate) {
+        if (!setProperty(main.id, kAudioDevicePropertyNominalSampleRate, Float64{requested.sampleRate})) {
+            std::fprintf(stderr, "CoreAudioBackend: '%s' won't run at %.0f Hz\n", main.name.c_str(), requested.sampleRate);
+        } else {
+            // The device takes a new rate a little later, not as the call
+            // returns: read too soon, the old rate would become the one held.
+            const auto giveUp = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+            while (getProperty(main.id, kAudioDevicePropertyNominalSampleRate, rate) && rate != requested.sampleRate &&
+                   std::chrono::steady_clock::now() < giveUp)
+                std::this_thread::sleep_for(std::chrono::milliseconds(10));
+            if (rate != requested.sampleRate)
+                std::fprintf(stderr, "CoreAudioBackend: '%s' stayed at %.0f Hz, not %.0f Hz\n", main.name.c_str(), rate,
+                             requested.sampleRate);
+        }
+    }
     getProperty(main.id, kAudioDevicePropertyNominalSampleRate, rate);
     wanted.sampleRate = rate;
 
@@ -434,6 +446,54 @@ void CoreAudioBackend::stop() {
     if (!running) return;
     if (procId != nullptr) AudioDeviceStop(ioDevice, reinterpret_cast<AudioDeviceIOProcID>(procId));
     running = false;
+}
+
+std::vector<double> CoreAudioBackend::sampleRates() const {
+    std::vector<double>              rates;
+    const AudioObjectPropertyAddress where = address(kAudioDevicePropertyAvailableNominalSampleRates);
+    UInt32                           size  = 0;
+    if (!isOpen || AudioObjectGetPropertyDataSize(main.id, &where, 0, nullptr, &size) != noErr) return rates;
+    std::vector<AudioValueRange> ranges(size / sizeof(AudioValueRange));
+    if (ranges.empty() || AudioObjectGetPropertyData(main.id, &where, 0, nullptr, &size, ranges.data()) != noErr)
+        return rates;
+    static constexpr double kCommon[] = {22050, 32000, 44100, 48000, 88200, 96000, 176400, 192000};
+    for (const AudioValueRange& range : ranges) {
+        if (range.mMinimum == range.mMaximum) {
+            rates.push_back(range.mMinimum);
+            continue;
+        }
+        for (const double rate : kCommon)
+            if (rate >= range.mMinimum && rate <= range.mMaximum) rates.push_back(rate);
+    }
+    std::sort(rates.begin(), rates.end());
+    rates.erase(std::unique(rates.begin(), rates.end()), rates.end());
+    return rates;
+}
+
+bool CoreAudioBackend::bufferSizeRange(std::uint32_t& minimum, std::uint32_t& maximum) const {
+    AudioValueRange range{};
+    if (!isOpen || ioDevice == 0 || !getProperty(ioDevice, kAudioDevicePropertyBufferFrameSizeRange, range)) return false;
+    minimum = static_cast<std::uint32_t>(range.mMinimum);
+    maximum = static_cast<std::uint32_t>(std::min<double>(range.mMaximum > 0 ? range.mMaximum : 8192, capacityFrames));
+    return minimum <= maximum;
+}
+
+std::uint32_t CoreAudioBackend::setBufferSize(std::uint32_t frames) {
+    if (!isOpen || ioDevice == 0 || frames == 0) return 0;
+    std::uint32_t minimum = 0, maximum = 0;
+    if (!bufferSizeRange(minimum, maximum)) return currentBufferSize.load();
+    const auto wantedFrames = std::clamp(frames, minimum, maximum);   // never past the planar buffers
+    if (restoreBufferSize == 0) {   // the first one set: close() puts this back
+        UInt32 before = 0;
+        if (getProperty(main.id, kAudioDevicePropertyBufferFrameSize, before)) restoreBufferSize = before;
+    }
+    if (!setProperty(ioDevice, kAudioDevicePropertyBufferFrameSize, UInt32{wantedFrames}))
+        std::fprintf(stderr, "CoreAudioBackend: couldn't set a %u-frame buffer\n", wantedFrames);
+    wanted.bufferSize = wantedFrames;   // and again whenever setUp() runs (a click routed elsewhere)
+    UInt32 now = 0;
+    if (getProperty(ioDevice, kAudioDevicePropertyBufferFrameSize, now))
+        currentBufferSize.store(now, std::memory_order_relaxed);
+    return currentBufferSize.load(std::memory_order_relaxed);
 }
 
 void CoreAudioBackend::close() {
