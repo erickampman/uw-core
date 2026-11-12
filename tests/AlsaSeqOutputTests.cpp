@@ -242,7 +242,28 @@ void testLegacyDestination(AlsaSeqOutput& out) {
         }
     CHECK(listed);
 
+    // Senders subscribed to the port: open() subscribes, close() undoes it,
+    // as VirMIDI takes only what subscribed senders send.
+    auto writers = [&] {
+        snd_seq_query_subscribe_t* query = nullptr;
+        snd_seq_query_subscribe_alloca(&query);
+        snd_seq_addr_t root{static_cast<unsigned char>(snd_seq_client_id(legacy)), static_cast<unsigned char>(port)};
+        snd_seq_query_subscribe_set_root(query, &root);
+        snd_seq_query_subscribe_set_type(query, SND_SEQ_QUERY_SUBS_WRITE);
+        int count = 0;
+        for (snd_seq_query_subscribe_set_index(query, 0); snd_seq_query_port_subscribers(legacy, query) >= 0;
+             snd_seq_query_subscribe_set_index(query, snd_seq_query_subscribe_get_index(query) + 1))
+            ++count;
+        return count;
+    };
+    CHECK(writers() == 0);
+
     const auto handle = out.open("uw-core legacy tests:in");
+    CHECK(writers() == 1);
+    const auto second = out.open("uw-core legacy tests:in");   // the same pair: one subscription
+    CHECK(writers() == 1);
+    out.close(second);
+    CHECK(writers() == 1);   // still the first handle's
     CHECK(out.protocol(handle) == MidiProtocol::Midi1);
     CHECK(out.send(handle, &kNoteOn1, 1));   // channel 2, note 60, velocity 100
     // Wait up to two seconds for the note-on, skipping anything else that
@@ -258,6 +279,7 @@ void testLegacyDestination(AlsaSeqOutput& out) {
     if (event != nullptr)
         CHECK(event->data.note.channel == 1 && event->data.note.note == 60 && event->data.note.velocity == 100);
     out.close(handle);
+    CHECK(writers() == 0);
     snd_seq_close(legacy);
 }
 

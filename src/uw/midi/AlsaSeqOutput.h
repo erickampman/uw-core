@@ -24,8 +24,9 @@ class AlsaSeqEndpoint;
 // matches it, as the seam asks. A legacy (pre-UMP) client, FluidSynth's for
 // one, gets MT 0x2 as ordinary sequencer events, converted by the kernel.
 //
-// open() sends straight to the destination's address (no subscription) from
-// a private port on the client of its protocol: a UMP MIDI 2.0 client's port,
+// open() sends straight to the destination's address from a private port on
+// the client of its protocol, and subscribes that port to the destination
+// too, as some destinations (VirMIDI) take only what subscribed senders send: a UMP MIDI 2.0 client's port,
 // unless it's marked MIDI 1.0 (a function block's), is MIDI 2.0; anything
 // else, legacy clients included, MIDI 1.0. openVirtual() makes a port others
 // subscribe to on the client of the protocol asked for, and sends to its
@@ -112,6 +113,8 @@ private:
     bool                     findDestination(const std::string& id, Destination& found) const;
     bool                     ownsEndpoint(int client) const;
     int                      senderPort(int clientIndex);
+    void                     subscribe(const Opened& o);
+    void                     unsubscribe(const Opened& o, MidiDestinationHandle self);
     std::uint8_t             freeTag() const;
     int                      queueFor(snd_seq_t* s);
     snd_seq_t*               sequencerOf(const Opened& o) const;

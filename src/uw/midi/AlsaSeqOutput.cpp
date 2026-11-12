@@ -123,6 +123,7 @@ MidiDestinationHandle AlsaSeqOutput::open(const std::string& destinationId) {
     o.destClient  = found.client;
     o.destPort    = found.port;
     if (o.port < 0) return kInvalidMidiDestination;
+    subscribe(o);
     o.tag = freeTag();
     const MidiDestinationHandle handle = nextHandle++;
     opened[handle] = std::move(o);
@@ -189,6 +190,8 @@ void AlsaSeqOutput::close(MidiDestinationHandle destination) {
     }
     else if (it->second.isVirtual)
         snd_seq_delete_simple_port(seq[it->second.clientIndex], it->second.port);
+    else
+        unsubscribe(it->second, destination);
     opened.erase(it);
 }
 
@@ -328,11 +331,14 @@ bool AlsaSeqOutput::sync(MidiDestinationHandle destination) {
     }
     const int port = senderPort(clientFor(found.info.protocol));
     if (port < 0) return false;
+    if (o.destClient >= 0 && (o.port != port || o.destClient != found.client || o.destPort != found.port))
+        unsubscribe(o, destination);   // moved: the old pair's subscription goes, if it's still there
     o.protocol    = found.info.protocol;
     o.clientIndex = clientFor(o.protocol);
     o.port        = port;
     o.destClient  = found.client;
     o.destPort    = found.port;
+    subscribe(o);   // a destination that went and came back lost it with its port
     return true;
 }
 
@@ -439,6 +445,30 @@ int AlsaSeqOutput::queueFor(snd_seq_t* s) {
     }
     queues[s] = queue;
     return queue;
+}
+
+// Subscribes `o`'s private port to its destination. Messages still go
+// straight to the destination's address, but some destinations take only
+// what's sent while a sender is subscribed to them: VirMIDI (snd-virmidi)
+// drops the rest, so Bitwig, which reads it as a raw MIDI device, got
+// nothing. Already subscribed (another handle to the same destination) is fine.
+void AlsaSeqOutput::subscribe(const Opened& o) {
+    if (o.isVirtual || o.ump || o.port < 0 || o.destClient < 0) return;
+    const int result = snd_seq_connect_to(seq[o.clientIndex], o.port, o.destClient, o.destPort);
+    if (result < 0 && result != -EBUSY)
+        std::fprintf(stderr, "AlsaSeqOutput: can't subscribe to %d:%d (%s); sending anyway\n", o.destClient,
+                     o.destPort, snd_strerror(result));
+}
+
+// Undoes subscribe(), unless another open handle (not `self`) sends to the
+// same destination from the same port.
+void AlsaSeqOutput::unsubscribe(const Opened& o, MidiDestinationHandle self) {
+    if (o.isVirtual || o.ump || o.port < 0 || o.destClient < 0) return;
+    for (const auto& [handle, other] : opened)
+        if (handle != self && !other.isVirtual && !other.ump && other.clientIndex == o.clientIndex &&
+            other.port == o.port && other.destClient == o.destClient && other.destPort == o.destPort)
+            return;
+    snd_seq_disconnect_to(seq[o.clientIndex], o.port, o.destClient, o.destPort);   // gone already: harmless
 }
 
 // The client's private port that open() destinations are sent from, made the
