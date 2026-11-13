@@ -56,6 +56,10 @@ ctest --test-dir build --output-on-failure
 The same three commands on both platforms. Everything goes in `build/` (ignored by git).
 
 The tests are silent:
+- `test-help-server` serves a page over loopback, fetches it and its image,
+  and checks what it refuses: no token or a wrong one, `..`, a foreign Host
+  (DNS rebinding), other methods, oversized and garbled requests, and that it
+  listens on 127.0.0.1 only, survives a client that says nothing, and stops.
 - `test-clap-host` loads an installed CLAP instrument and processes a few
   blocks into memory. It skips if none is installed.
 - `test-backends` checks for a JACK server without starting one, and opens

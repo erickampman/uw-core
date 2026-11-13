@@ -147,6 +147,7 @@ if(UW_CORE_TESTS)
     endfunction()
     uw_add_test(test-ump tests/UmpTests.cpp uw-ump)
     uw_add_test(test-note-remap tests/NoteRemapTests.cpp uw-ump)
+    uw_add_test(test-help-server tests/HelpServerTests.cpp uw-ump)   # header-only; uw-ump for its include path
     if(TARGET uw-clap-notes)
         uw_add_test(test-clap-note-remap tests/ClapNoteRemapTests.cpp uw-clap-notes)
     endif()
