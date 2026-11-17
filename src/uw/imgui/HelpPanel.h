@@ -17,6 +17,8 @@
 // goes back), opens and closes disclosures, and sends web links to
 // `openUrl` (SDL_OpenURL, say). The font has no bold or italic of its own
 // here: bold is drawn twice, a hair apart, and italic in the muted colour.
+// The title bar stays inside the app's window, so the window can't be dragged
+// (or left, by the app's window shrinking) where it can't be dragged back.
 
 #include <algorithm>
 #include <functional>
@@ -26,6 +28,7 @@
 #include <vector>
 
 #include "imgui.h"
+#include "imgui_internal.h"   // FindWindowByName: where the window is before Begin
 #include "uw/help/HelpDoc.h"
 #include "uw/help/HelpLayout.h"
 
@@ -68,6 +71,7 @@ public:
             ImGui::SetNextWindowCollapsed(false);
             focus_ = false;
         }
+        keepReachable(title, scale);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, kPage);
         ImGui::PushStyleColor(ImGuiCol_ChildBg, kPage);
         const bool visible = ImGui::Begin(title, &open_, ImGuiWindowFlags_NoCollapse);
@@ -113,6 +117,23 @@ public:
 
 private:
     static constexpr ImU32 kPage = IM_COL32(251, 250, 247, 255);
+
+    // ImGui keeps only a sliver of a window inside the app's (19 pixels of
+    // its far corner), which may be none of the title bar. Before Begin, after
+    // NewFrame has moved it for a drag, so the window is drawn where it ends
+    // up: the whole title bar's height, and 120 pixels of its width (or all of
+    // a narrower one), inside the main viewport.
+    static void keepReachable(const char* title, float scale) {
+        const ImGuiWindow* w = ImGui::FindWindowByName(title);
+        if (w == nullptr) return;   // the first frame: it opens where ImGui puts it
+        const ImGuiViewport* vp   = ImGui::GetMainViewport();
+        const float          grip = std::min(w->Size.x, 120.0f * scale);
+        const float          bar  = w->TitleBarHeight;
+        ImVec2 to = w->Pos;
+        to.x = std::max(std::min(to.x, vp->WorkPos.x + vp->WorkSize.x - grip), vp->WorkPos.x + grip - w->Size.x);
+        to.y = std::max(std::min(to.y, vp->WorkPos.y + vp->WorkSize.y - bar), vp->WorkPos.y);
+        if (to.x != w->Pos.x || to.y != w->Pos.y) ImGui::SetNextWindowPos(to);
+    }
 
     static ImU32 color(Role r) {
         switch (r) {
