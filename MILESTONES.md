@@ -38,3 +38,11 @@
   from `stagehand::MainLoop`: takes a `HostServices&` for the X11 connection's
   fd watch (Linux only; Cocoa drives its own), and a `requestQuit` callback
   for Ctrl/Cmd-Q, instead of a concrete app's main loop.
+
+## M8: Network MIDI 2.0 transport (KeyboardEDO's M10, StageHand, Umpire)
+- [ ] Stream Configuration Request read and Notification answered (`UmpStream.h`); CoreMIDI and ALSA endpoints reply with the current protocol, even to a refused request (KeyboardEDO's M9)
+- [ ] netmidi2 (github.com/erickampman/netmidi2, MIT, C17) as a submodule, linked as `netmidi2::netmidi2`
+- [ ] A network `MidiOutput` / `MidiInput` behind the same seam as CoreMIDI and ALSA: open a session as host or client, send and receive UMP
+- [ ] Discovery and Stream Configuration answered over the session (no OS converts there, so a MIDI 1.0 peer asks in-band)
+- [ ] Finding peers: a typed address and port first, then mDNS / DNS-SD `_midi2._udp` (Bonjour on macOS, Avahi on Linux)
+- [ ] In netmidi2: in-order delivery after retransmit, authentication; interop against Apple's network MIDI 2.0 on a real LAN
