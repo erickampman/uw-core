@@ -24,12 +24,19 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |
 | `uw::midi` | `MidiInput`: ALSA sequencer UMP (Linux, alsa-lib 1.2.10+), CoreMIDI (macOS). `MidiOutput`: ALSA sequencer UMP (Linux), CoreMIDI (macOS); a published source can be a UMP endpoint with function blocks (`openEndpoint`: CoreMIDI, macOS 15+, in `CoreMidiEndpoint.mm`, uw-core's one Objective-C++ file; the ALSA sequencer, alsa-lib 1.2.13+, a client of its own, in `AlsaSeqEndpoint`) | `uw::base`; alsa-lib | the apps, KeyboardEDO |
 
-One header needs no target: `uw/base/HelpServer.h` serves a help page, and the
-files it shows, over loopback HTTP, so a sandboxed browser (Ubuntu's Firefox
-snap, which can't read `/tmp` or `~/.local`) can show it. POSIX only, nothing
-to link; the apps and plugins use it on Linux. Its comment lists what it
-refuses (anything but 127.0.0.1, a URL without its token, a wrong Host, any
-name but its in-memory files').
+Help pages need no target either: headers only, so the products show their
+help in a window of their own, with no browser and no web server.
+- `uw/help/HelpDoc.h` reads a product's `help.md` (the Markdown the help pages
+  use: the head, cards, disclosures, lists, tables, links) into blocks;
+  `uw/help/HelpLayout.h` lays them out at a width, measuring text through the
+  window's font. Standard C++17.
+- `uw/dgl/HelpWindow.hpp` draws that in a DGL window with NanoVG, for the
+  DPF/DGL products (the plugins, StageHand): `HelpOpener` is what an editor
+  keeps. Needs DGL on the include path.
+- `uw/imgui/HelpPanel.h` draws it in a Dear ImGui window (1.92+), for
+  KeyboardEDO.
+- `tools/help-preview` shows a help.md in the DGL window, for checking a page
+  without building its product (see its README.md).
 
 Every target is built with hidden symbols, so a copy linked into a plugin
 can't bind to another plugin's copy in the same host.
