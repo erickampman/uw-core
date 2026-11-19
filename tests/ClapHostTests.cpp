@@ -57,6 +57,8 @@ void instrument() {
 
     constexpr std::uint32_t kFrames = 256;
     CHECK(plugin->activate(48000.0, kFrames));
+    std::printf("clap-host: %s's latency: %u frames\n", it->name.c_str(), plugin->latencyFrames());
+    CHECK(plugin->latencyFrames() < 48000);   // read through CLAP latency, or 0 without it
 
     std::vector<std::vector<float>> channels(2, std::vector<float>(kFrames, 0.0f));
     float*                          pointers[2] = {channels[0].data(), channels[1].data()};
@@ -80,6 +82,7 @@ void instrument() {
 
     plugin->stopProcessing();
     plugin->deactivate();
+    CHECK(plugin->latencyFrames() == 0);   // only while active
 }
 
 struct Collect final : uw::EventSink {
@@ -109,6 +112,8 @@ void noteEffect() {
     CHECK(!layout.noteInputs.empty() && !layout.noteOutputs.empty());
     constexpr std::uint32_t kFrames = 256;
     CHECK(plugin->activate(48000.0, kFrames));
+    std::printf("clap-host: %s's latency: %u frames\n", it->name.c_str(), plugin->latencyFrames());
+    CHECK(plugin->latencyFrames() < 48000);   // read through CLAP latency, or 0 without it
 
     uw::Event note;
     note.type         = uw::EventType::Midi;

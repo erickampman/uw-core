@@ -116,6 +116,7 @@ std::unique_ptr<ClapPlugin> ClapPlugin::create(std::shared_ptr<ClapModule> loade
     instance->guiExt        = static_cast<const clap_plugin_gui_t*>(p->get_extension(p, CLAP_EXT_GUI));
     instance->timerExt      = static_cast<const clap_plugin_timer_support_t*>(p->get_extension(p, CLAP_EXT_TIMER_SUPPORT));
     instance->fdExt         = static_cast<const clap_plugin_posix_fd_support_t*>(p->get_extension(p, CLAP_EXT_POSIX_FD_SUPPORT));
+    instance->latencyExt    = static_cast<const clap_plugin_latency_t*>(p->get_extension(p, CLAP_EXT_LATENCY));
     return instance;
 }
 
@@ -711,7 +712,11 @@ void ClapPlugin::hostMarkDirty(const clap_host_t* host) {
 }
 
 void ClapPlugin::hostLatencyChanged(const clap_host_t* host) {
-    from(host)->report(LogLevel::Info, "latency changed (not compensated yet)");
+    from(host)->hostServices.latencyChanged();
+}
+
+std::uint32_t ClapPlugin::latencyFrames() const {
+    return active && latencyExt != nullptr ? latencyExt->get(plugin) : 0;
 }
 
 bool ClapPlugin::hostAudioPortsRescanFlagSupported(const clap_host_t*, std::uint32_t) {

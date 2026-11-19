@@ -41,6 +41,7 @@ public:
     bool paramValueText(std::uint32_t id, double value, std::string& text) const override;
     bool                       activate(double sampleRate, std::uint32_t maxBlockFrames) override;
     void                       deactivate() override;
+    std::uint32_t              latencyFrames() const override;
     void                       process(const ProcessContext& ctx) noexcept override;
     void                       stopProcessing() noexcept override;
     void                       reset() noexcept override;
@@ -136,6 +137,7 @@ private:
     const clap_plugin_gui_t*              guiExt   = nullptr;
     const clap_plugin_timer_support_t*    timerExt = nullptr;
     const clap_plugin_posix_fd_support_t* fdExt    = nullptr;
+    const clap_plugin_latency_t*          latencyExt = nullptr;
 
     // Editor and main-loop registrations (main thread).
     EditorHost*                 editorHost        = nullptr;   // non-null while the editor exists

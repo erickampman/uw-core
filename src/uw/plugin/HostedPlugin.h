@@ -51,6 +51,11 @@ public:
     virtual bool activate(double sampleRate, std::uint32_t maxBlockFrames) = 0;
     virtual void deactivate() = 0;
 
+    // The plugin's latency in frames (CLAP latency): how late its output is
+    // against its input. Valid while active; 0 for a plugin without the
+    // extension. Thread: main.
+    virtual std::uint32_t latencyFrames() const { return 0; }
+
     // --- real-time processing (audio thread) ---
     // Consume ctx.eventsIn, render ctx.audioOut, emit feedback via ctx.eventsOut.
     // The first call after activate() (or after stopProcessing()) starts

@@ -58,6 +58,11 @@ public:
     // Thread: main.
     virtual void stateChanged() {}
 
+    // The plugin's latency changed (CLAP latency.changed). A plugin may say so
+    // only while it's being activated, so this comes during activate(); read
+    // HostedPlugin::latencyFrames() once that returns. Thread: main.
+    virtual void latencyChanged() {}
+
     // --- main-loop services (main thread; callbacks also run on the main thread)
     // Plugin editors on Linux have no event loop of their own; they rely on the
     // host's (CLAP timer-support and posix-fd-support). The defaults mean "not
