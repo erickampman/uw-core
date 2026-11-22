@@ -19,6 +19,7 @@ namespace `uw`; headers under `src/uw/`, included as `"uw/<layer>/File.h"`.
 | `uw::clap-notes` | `ClapNoteRemap`: NoteRemap's rules for CLAP note events and note expressions (a fraction as a tuning expression) | the CLAP headers (`UW_CORE_CLAP_INCLUDE_DIR`, so a plugin built with `UW_CORE_UMP_ONLY` points it at its own SDK) | Retune, EDOSpread12 |
 | `uw::base` | the shared clock, SPSC queue, denormal control, audio buffers, transport time, events | `uw::ump`; C++20 | the apps |
 | `uw::plugin` | the plugin seam: `HostedPlugin`, `PluginFactory`, `HostServices`, editors, parameters, ports (headers only) | `uw::base` | the apps |
+| `uw::note-effects` | `NoteEffectChain`: CLAP note effects in series before an instrument, MIDI translated for each note port | `uw::plugin` | Umpire's plugin |
 | `uw::clap-host` | the seam's CLAP implementation: scanning, loading, processing, state, editors | `uw::plugin`, the CLAP SDK (submodule, 1.2.10) | the apps |
 | `uw::editor-window` | `EditorWindow`: a top-level window hosting one plugin's editor (X11 on Linux, Cocoa on macOS) | `uw::plugin`; libX11 (Linux) or AppKit (macOS) | the apps |
 | `uw::audio` | `AudioBackend`: JACK (Linux), CoreAudio (macOS) | `uw::base`; libjack | the apps |

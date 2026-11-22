@@ -103,6 +103,13 @@ EditorWindow::~EditorWindow() { close(true); }
 
 bool EditorWindow::isOpen() const noexcept { return window != nullptr; }
 
+void EditorWindow::setTitle(const std::string& title) {
+    if (window == nullptr) return;
+    @autoreleasepool {
+        asWindow(window).title = [NSString stringWithUTF8String:title.c_str()];
+    }
+}
+
 void EditorWindow::close(bool closeEditor) {
     if (editorOpen && closeEditor) plugin.closeEditor();   // the editor goes before its parent window
     editorOpen = false;

@@ -8,6 +8,7 @@ project(uw-core VERSION 0.1.0 LANGUAGES CXX)
 #   uw::ump        UMP messages and helpers; no dependencies, C++17, PIC
 #   uw::base       clock, SPSC queue, denormals, audio buffers, events
 #   uw::plugin     the plugin seam (interfaces only)
+#   uw::note-effects  note effects in series before an instrument
 #   uw::clap-host  the plugin seam's CLAP implementation
 #   uw::editor-window  a window hosting a plugin's editor (X11 / Cocoa)
 #   uw::audio      JACK (Linux) / CoreAudio (macOS)
@@ -68,6 +69,11 @@ if(NOT UW_CORE_UMP_ONLY)
     add_library(uw-plugin INTERFACE)
     add_library(uw::plugin ALIAS uw-plugin)
     target_link_libraries(uw-plugin INTERFACE uw-base)
+
+    # --- uw::note-effects: CLAP note effects in series before an instrument -----
+    add_library(uw-note-effects STATIC src/uw/plugin/NoteEffectChain.cpp)
+    add_library(uw::note-effects ALIAS uw-note-effects)
+    target_link_libraries(uw-note-effects PUBLIC uw-plugin PRIVATE uw-warnings)
 
     # The CLAP SDK (git submodule, pinned to 1.2.10, as StageHand's). Its
     # headers are third-party: no warnings from them in our code.
@@ -156,6 +162,7 @@ if(UW_CORE_TESTS)
         uw_add_test(test-clock     tests/ClockTests.cpp     uw-base)
         uw_add_test(test-denormals tests/DenormalTests.cpp  uw-base)
         uw_add_test(test-clap-host tests/ClapHostTests.cpp uw-clap-host)
+        uw_add_test(test-note-effect-chain tests/NoteEffectChainTests.cpp uw-note-effects)
         if(UW_CORE_BACKENDS AND NOT APPLE)
             uw_add_test(test-backends tests/BackendTests.cpp "uw-audio;uw-midi")
             uw_add_test(test-alsa-output tests/AlsaSeqOutputTests.cpp uw-midi)

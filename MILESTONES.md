@@ -46,3 +46,8 @@
 - [ ] Discovery and Stream Configuration answered over the session (no OS converts there, so a MIDI 1.0 peer asks in-band)
 - [ ] Finding peers: a typed address and port first, then mDNS / DNS-SD `_midi2._udp` (Bonjour on macOS, Avahi on Linux)
 - [ ] In netmidi2: in-order delivery after retransmit, authentication; interop against Apple's network MIDI 2.0 on a real LAN
+
+## M9: Note effects in series (Umpire's NE, then StageHand)
+- [x] `uw::note-effects`: `NoteEffectChain`, CLAP note effects in series before an instrument, from StageHand's row chain (`Engine::runMidiEffects`, `ChainSink`): each effect's input in the protocol its note port takes, its output sorted and clamped into the block, a bypassed one run without MIDI, parameter changes in and out; `dialectAccepts`, `translateFor` (`test-note-effect-chain`)
+- [x] `EditorWindow::setTitle` (X11, Cocoa): an effect's editor retitled when it's bypassed
+- [ ] StageHand's rows on `NoteEffectChain`, in place of their own chain

@@ -47,6 +47,8 @@ public:
 
     // False once the user (or the plugin) closed it.
     bool isOpen() const noexcept;
+    // A new title (a note effect bypassed, say: its editor can't show it).
+    void setTitle(const std::string& title);
 
     // --- EditorHost ---
     bool requestEditorResize(EditorSize size) override;

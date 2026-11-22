@@ -81,6 +81,12 @@ EditorWindow::~EditorWindow() { close(true); }
 
 bool EditorWindow::isOpen() const noexcept { return window != 0; }
 
+void EditorWindow::setTitle(const std::string& title) {
+    if (window == 0 || display == nullptr) return;
+    XStoreName(display, window, title.c_str());
+    XFlush(display);
+}
+
 void EditorWindow::close(bool closeEditor) {
     if (editorOpen && closeEditor) plugin.closeEditor();   // the editor goes before its parent window
     editorOpen = false;
