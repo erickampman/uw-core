@@ -32,18 +32,18 @@ bool dialectAccepts(NoteDialectMask dialects, const MidiMessage& m) noexcept {
 }
 
 std::size_t translateFor(NoteDialectMask dialects, const MidiMessage& m, ump::UpconvertState& upconvert,
-                         MidiMessage* out) noexcept {
+                         MidiMessage* out, bool* unsupported) noexcept {
     const ump::MessageType type = ump::messageType(m);
     if (dialectAccepts(dialects, m)) {
         out[0] = m;
         return 1;
     }
-    if (type == ump::MessageType::Midi2ChannelVoice && (dialects & NoteDialect::Midi2) == 0)
+    if (type == ump::MessageType::Midi2ChannelVoice && takesMidi1(dialects))
         return ump::downconvert(m, out, ump::kMaxTranslatedMessages);
     if (type == ump::MessageType::Midi1ChannelVoice && (dialects & NoteDialect::Midi2) != 0)
         return ump::upconvert(m, upconvert, out, ump::kMaxTranslatedMessages);
-    out[0] = m;
-    return 1;
+    if (unsupported != nullptr) *unsupported = true;
+    return 0;
 }
 
 void NoteEffectChain::prepare(std::vector<Stage> stageList, NoteDialectMask dialects, std::uint16_t port,
@@ -86,7 +86,9 @@ EventBlock NoteEffectChain::translateInput(EventBlock input, std::size_t first) 
     for (std::uint32_t i = 0; i < input.count; ++i) {
         const Event& e = input.events[i];
         if (e.type != EventType::Midi || s.dialects == 0) continue;
-        const std::size_t count = translateFor(s.dialects, e.midi, s.upconvert, translated);
+        bool              none  = false;
+        const std::size_t count = translateFor(s.dialects, e.midi, s.upconvert, translated, &none);
+        if (none) unsupported.fetch_add(1, std::memory_order_relaxed);
         for (std::size_t k = 0; k < count; ++k) {
             if (n == cap) {
                 dropped.fetch_add(1, std::memory_order_relaxed);
@@ -182,7 +184,9 @@ void NoteEffectChain::Sink::push(const Event& event) noexcept {
     if (dialects == 0 || upconvert == nullptr) return;
     const std::uint32_t offset = std::min(event.sampleOffset, frames > 0 ? frames - 1 : 0u);
     MidiMessage         translated[ump::kMaxTranslatedMessages];
-    const std::size_t   n = translateFor(dialects, event.midi, *upconvert, translated);
+    bool                none = false;
+    const std::size_t   n    = translateFor(dialects, event.midi, *upconvert, translated, &none);
+    if (none) chain->unsupported.fetch_add(1, std::memory_order_relaxed);
     for (std::size_t k = 0; k < n; ++k) add(translated[k], offset);
 }
 

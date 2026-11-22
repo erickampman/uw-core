@@ -50,4 +50,4 @@
 ## M9: Note effects in series (Umpire's NE, then StageHand)
 - [x] `uw::note-effects`: `NoteEffectChain`, CLAP note effects in series before an instrument, from StageHand's row chain (`Engine::runMidiEffects`, `ChainSink`): each effect's input in the protocol its note port takes, its output sorted and clamped into the block, a bypassed one run without MIDI, parameter changes in and out; `dialectAccepts`, `translateFor` (`test-note-effect-chain`)
 - [x] `EditorWindow::setTitle` (X11, Cocoa): an effect's editor retitled when it's bypassed
-- [ ] StageHand's rows on `NoteEffectChain`, in place of their own chain
+- [x] StageHand's rows on `NoteEffectChain`, in place of their own chain (2026-11-22); `translateFor` now follows StageHand's rule: down to MIDI 1.0 only for a port that takes it, and a message no form of which the port takes is dropped and counted (`takeUnsupported()`), not passed on

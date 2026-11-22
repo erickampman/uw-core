@@ -8,9 +8,11 @@
 // moves onto it later.
 //
 // - MIDI keeps its protocol where the next note port takes it, and is
-//   translated where it doesn't: down to MIDI 1.0 for a port without MIDI 2.0
-//   (losing per-note pitch), up to MIDI 2.0 for one that takes only MIDI 2.0,
-//   with an upconverter state per stream.
+//   translated where it doesn't: down to MIDI 1.0 for a port that takes MIDI
+//   1.0 and not 2.0 (losing per-note pitch), up to MIDI 2.0 for one that
+//   takes only MIDI 2.0, with an upconverter state per stream. A message no
+//   form of which the port takes (a CLAP-only port, SysEx) is dropped and
+//   counted (takeUnsupported()).
 // - An effect's output out of time order is sorted, and an offset past the
 //   block is clamped into it.
 // - A bypassed effect still runs, with its own parameter changes and no MIDI,
@@ -40,11 +42,12 @@ bool dialectAccepts(NoteDialectMask dialects, const MidiMessage& m) noexcept;
 
 // `m` as a note port with `dialects` takes it, into `out` (at least
 // ump::kMaxTranslatedMessages): unchanged if it takes it, down to MIDI 1.0 if
-// it lacks MIDI 2.0, up to MIDI 2.0 if it takes only that (with `upconvert`,
-// the stream's state); otherwise unchanged. Returns the count, 0 for a
-// message the upconverter absorbs (a bank select, an RPN's selection).
+// it takes that and not MIDI 2.0, up to MIDI 2.0 if it takes only that (with
+// `upconvert`, the stream's state). Returns the count: 0 for a message the
+// upconverter absorbs (a bank select, an RPN's selection), and for one the
+// port takes in no form, when `*unsupported` (if given) is set.
 std::size_t translateFor(NoteDialectMask dialects, const MidiMessage& m, ump::UpconvertState& upconvert,
-                         MidiMessage* out) noexcept;
+                         MidiMessage* out, bool* unsupported = nullptr) noexcept;
 
 // A note effect's output that isn't MIDI (its parameter changes, from its
 // own editor or modulation), for the host to follow. Audio thread.
@@ -87,6 +90,9 @@ public:
 
     // Events dropped since the last call because a stage's buffer was full.
     std::uint64_t takeDropped() noexcept { return dropped.exchange(0, std::memory_order_relaxed); }
+    // Messages dropped since the last call because the next note port takes
+    // them in no form.
+    std::uint64_t takeUnsupported() noexcept { return unsupported.exchange(0, std::memory_order_relaxed); }
 
 private:
     struct StageState {
@@ -125,7 +131,7 @@ private:
     std::vector<Event>      head;        // the input, translated for the first stage
     std::vector<Event>      merged;      // a stage's input: MIDI and its parameter changes
     Sink                    sink;
-    std::atomic<std::uint64_t> dropped{0};
+    std::atomic<std::uint64_t> dropped{0}, unsupported{0};
 };
 
 } // namespace uw

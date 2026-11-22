@@ -146,6 +146,19 @@ void testTranslation() {
     CHECK(one.got.size() == 1 && ump::messageType(one.got[0].midi) == ump::MessageType::Midi1ChannelVoice);
     CHECK(two.got.size() == 1 && ump::messageType(two.got[0].midi) == ump::MessageType::Midi2ChannelVoice);
     CHECK(out.count == 1 && ump::isNoteOn(out.events[0].midi));
+
+    // A destination that takes no MIDI (a CLAP-only port): dropped, counted.
+    chain.prepare({{&a, false}}, NoteDialect::Clap, 0, 64, 32);
+    out = chain.run(64, TimeInfo{}, EventBlock{in, 1});
+    CHECK(out.count == 0 && chain.takeUnsupported() == 1 && chain.takeUnsupported() == 0);
+    // SysEx (MT 3) to a MIDI 1.0 effect: no form it takes.
+    MidiMessage sysex;
+    sysex.words[0]  = 0x30010000u;
+    sysex.wordCount = 2;
+    const Event sx[] = {midi(0, sysex)};
+    chain.prepare({{&one, false}}, kBoth, 0, 64, 32);
+    out = chain.run(64, TimeInfo{}, EventBlock{sx, 1});
+    CHECK(one.got.empty() && chain.takeUnsupported() == 1);
 }
 
 void testOrderClampAndFeedback() {
